@@ -50,6 +50,11 @@
   button.b.p { background: var(--blue); color: #fff; }
   button.b.r { border-color: var(--bad); color: var(--bad); }
   button.b:disabled { opacity: .45; cursor: default; }
+  .ctrlrow select, .ctrlrow input[type=text], .ctrlrow .b { height: 40px; }
+  .ctrlrow select { padding-top: 0; padding-bottom: 0; }
+  .tgl .t-on { display: none; }
+  .tgl input:checked ~ .t-off { display: none; }
+  .tgl input:checked ~ .t-on { display: inline; }
   .hint { font-size: 13px; color: var(--muted); }
   .warn { color: var(--warn); } .bad { color: var(--bad); } .good { color: var(--ok); }
   .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
@@ -86,7 +91,7 @@
   #fSteps .fstep { padding: 3px 0; font-size: 13px; }
   #fSteps .fstep.ok { color: var(--ok); } #fSteps .fstep.run { color: var(--blue); font-weight: 600; } #fSteps .fstep.fail { color: var(--bad); font-weight: 600; }
   ol { padding-left: 20px; margin: 6px 0; } li { margin: 3px 0; }
-  @media (max-width: 899px) { input[type=text], input[type=number], select { font-size: 16px; } }
+  @media (max-width: 899px) { input[type=text], input[type=number], select { font-size: 16px; } .ctrlrow select, .ctrlrow input[type=text], .ctrlrow .b { height: 41px; } }
   @media (max-width: 600px) {
     main { padding: 10px 10px 40px; }
     .hide-s { display: none; }
@@ -202,13 +207,13 @@
 
   <div class="card">
     <h2>控制器</h2>
-    <div class="row" style="align-items:flex-end">
+    <div class="row ctrlrow" style="align-items:flex-end">
       <div class="fld" style="flex:1;min-width:140px">选择控制器
         <select id="ctrlSel"></select></div>
       <button class="b" id="ctrlAdd">新增</button>
       <button class="b r" id="ctrlDel">删除</button>
     </div>
-    <div class="row" style="align-items:flex-end">
+    <div class="row ctrlrow" style="align-items:flex-end">
       <div class="fld">名称<input type="text" id="cName" style="width:130px"></div>
       <div class="fld">请求 ID<input type="text" class="mono" id="cReq" style="width:100px"></div>
       <div class="fld">响应 ID<input type="text" class="mono" id="cResp" style="width:100px"></div>
@@ -216,8 +221,8 @@
       <div class="fld">填充字节<input type="text" class="mono" id="cPad" placeholder="00" style="width:70px"></div>
     </div>
     <div class="row">
-      <label><input type="checkbox" id="cFd" checked> CAN FD</label>
-      <label><input type="checkbox" id="cExt"> 扩展帧（29 位 ID）</label>
+      <label class="tgl"><input type="checkbox" id="cFd" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
+      <label class="tgl"><input type="checkbox" id="cExt"><span class="t-off">标准帧（11 位 ID）</span><span class="t-on">扩展帧（29 位 ID）</span></label>
     </div>
     <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器。保密内容不进仓库。</div>
   </div>
@@ -290,8 +295,8 @@
       <div class="fld">循环周期 ms<input type="number" id="sCyc" min="1" style="width:100px"></div>
     </div>
     <div class="row">
-      <label><input type="checkbox" id="sExt"> 扩展帧</label>
-      <label><input type="checkbox" id="sFd"> CAN FD</label>
+      <label class="tgl"><input type="checkbox" id="sExt"><span class="t-off">标准帧</span><span class="t-on">扩展帧</span></label>
+      <label class="tgl"><input type="checkbox" id="sFd"><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
       <label><input type="checkbox" id="sBrs"> BRS</label>
     </div>
     <div class="row" style="margin-top:6px">
@@ -328,6 +333,18 @@
     <div class="hint" id="fInfo" style="margin-top:8px">支持 S19 / HEX。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
   </div>
 
+  <div class="card">
+    <div class="hint" style="margin-bottom:10px">开始前确认：<b>蓄电池电压正常 / 接好充电宝</b>，手机设成不自动锁屏，中途别拔线、别切后台、别关通道。刷写时整车其他控制器会被静默，失败会尝试自动恢复；若提示停在 Boot，重新刷一次。</div>
+    <div class="row">
+      <button class="b p" id="fStart">开始刷写</button>
+      <button class="b r" id="fStop" hidden>停止</button>
+    </div>
+    <div class="bar" style="margin-top:12px"><i id="fBar"></i></div>
+    <div class="hint" id="fProg" style="margin-top:5px"></div>
+    <div id="fSteps" style="margin-top:10px"></div>
+    <div id="fLog" style="margin-top:8px"></div>
+  </div>
+
   <details class="card">
     <summary>刷写流程（高级：步骤、指令、等待时间）</summary>
     <p class="hint" style="margin-top:8px">默认是标准 UDS 刷写顺序，换控制器 / 供应商改这里。顶层 <code>alfid</code> 地址/长度格式、<code>timeout</code> 每条等待毫秒、<code>recovery</code> 中途失败恢复整车的功能寻址指令；<code>steps</code> 每步有 <code>op</code>（req 物理请求 / func 功能寻址不等应答 / security 安全访问 / fingerprint 写指纹 / tp_on / tp_off 保持在线 / flash 刷文件 / delay 等待）、<code>name</code>、<code>data</code>、<code>wait</code>。flash 步的 <code>file</code> 是 driver/app，<code>erase</code> 先擦除、<code>activate</code> 后激活。</p>
@@ -340,18 +357,6 @@
       <span class="hint" id="fFlowSt"></span>
     </div>
   </details>
-
-  <div class="card">
-    <div class="hint" style="margin-bottom:10px">开始前确认：<b>蓄电池电压正常 / 接好充电宝</b>，手机设成不自动锁屏，中途别拔线、别切后台、别关通道。刷写时整车其他控制器会被静默，失败会尝试自动恢复；若提示停在 Boot，重新刷一次。</div>
-    <div class="row">
-      <button class="b p" id="fStart">开始刷写</button>
-      <button class="b r" id="fStop" hidden>停止</button>
-    </div>
-    <div class="bar" style="margin-top:12px"><i id="fBar"></i></div>
-    <div class="hint" id="fProg" style="margin-top:5px"></div>
-    <div id="fSteps" style="margin-top:10px"></div>
-    <div id="fLog" style="margin-top:8px"></div>
-  </div>
 </section>
 
 <section id="cfg">
@@ -364,7 +369,7 @@
           <option value="500000" selected>500k</option><option value="1000000">1M</option>
         </select></div>
       <div class="fld">采样点 %<input type="number" id="nomSp" value="80" min="50" max="95" step="0.5" style="width:84px"></div>
-      <label style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fdOn" checked> CAN FD</label>
+      <label class="tgl" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fdOn" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
     </div>
     <div class="row" id="fdRow">
       <div class="fld">数据段波特率
@@ -372,7 +377,7 @@
           <option value="1000000">1M</option><option value="2000000" selected>2M</option>
           <option value="4000000">4M</option><option value="5000000">5M</option><option value="8000000">8M</option>
         </select></div>
-      <div class="fld">采样点 %<input type="number" id="dataSp" value="75" min="50" max="95" step="0.5" style="width:84px"></div>
+      <div class="fld">采样点 %<input type="number" id="dataSp" value="70" min="50" max="95" step="0.5" style="width:84px"></div>
       <div class="fld">FD 类型
         <select id="niso"><option value="0">ISO（一般选这个）</option><option value="1">非 ISO（Bosch）</option></select></div>
     </div>
