@@ -52,6 +52,9 @@ SEF 网页按项目代号显示车型；用户在 SEF 里说项目代号。诊�
 不要把解密后的 DBC、Excel 或报文明文提交到仓库（`.gitignore` 已排除 `*.dbc`、`*.xlsx`、`*.blf`、`*.asc`）。
 改了 `tools/template.html` 或 `tools/web/*.js` 后，需要网站密码（6 位）重新生成 `docs/`：`python tools/build.py --pin 网站密码`。
 
+## CAN 工具（canlink，issue #11）
+手机 / 电脑用的 CAN FD 工具（看报文、录报文、发报文；后面加诊断、刷写），硬件 MKS CANable 2.0。网页在 `docs/canlink/`（直接发布，不经 build.py、不加密，不放 DBC 等保密内容），固件在 `canlink/firmware/`（GPLv3），说明和自测见 `canlink/README.md`。改了网页跑 `node canlink/test/test_web.js` 和 `test_dfu.js`。
+
 ## 推送
 用户已同意：VehDiag_sef、VehDiag_pub、VehDiag_shr、VehDiag_gnl 四个仓库的改动都可以直接推送到 `main`（推送前先在本地测试），不必走 PR / 等 Muse 合并。
 SEF 改了网页相关文件后记得用网站密码重新生成 `docs/` 一起提交。

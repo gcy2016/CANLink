@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>CAN 工具</title>
+<style>
+  :root {
+    --bg: #f4f7fb; --card: #fff; --text: #1d2733; --muted: #6b7a8c;
+    --blue: #2a6db5; --blue-d: #22507f; --blue-l: #e8f0fa; --line: #d5dde8;
+    --ok: #2e8b57; --warn: #c27c0e; --bad: #c0392b; --hl: #fff2b3;
+    --mono: ui-monospace, Menlo, Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  header { background: linear-gradient(135deg, var(--blue-d), var(--blue)); color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.18); white-space: nowrap; }
+  .chip.on { background: #3fa86b; } .chip.err { background: #d0533f; }
+  #stat { margin-left: auto; font-size: 12px; opacity: .92; font-family: var(--mono); }
+  nav { display: flex; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; overflow-x: auto; }
+  nav button { flex: 1; min-width: 64px; border: 0; background: none; padding: 11px 6px; font-size: 15px; color: var(--muted); border-bottom: 3px solid transparent; cursor: pointer; }
+  nav button.on { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+  main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 40px; }
+  section { display: none; } section.on { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--blue-d); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  label { display: inline-flex; align-items: center; gap: 6px; }
+  .fld { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+  input, select, button { font: inherit; }
+  input[type=text], input[type=number], select { padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); min-width: 0; }
+  input:focus, select:focus { outline: none; border-color: var(--blue); }
+  input.mono { font-family: var(--mono); }
+  button.b { padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--blue); background: #fff; color: var(--blue); cursor: pointer; white-space: nowrap; }
+  button.b.p { background: var(--blue); color: #fff; }
+  button.b.r { border-color: var(--bad); color: var(--bad); }
+  button.b:disabled { opacity: .45; cursor: default; }
+  .hint { font-size: 13px; color: var(--muted); }
+  .warn { color: var(--warn); } .bad { color: var(--bad); } .good { color: var(--ok); }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .kv div { background: var(--blue-l); border-radius: 8px; padding: 6px 10px; }
+  .kv b { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+  .kv span { font-family: var(--mono); }
+  .seg { display: inline-flex; border: 1.5px solid var(--blue); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; color: var(--blue); padding: 6px 12px; cursor: pointer; }
+  .seg button.on { background: var(--blue); color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+  th { text-align: left; font-family: inherit; font-weight: 600; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); padding: 4px 6px; position: sticky; top: 0; background: var(--card); }
+  td { padding: 3px 6px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+  td.d { word-break: normal; overflow-wrap: anywhere; }
+  th { white-space: nowrap; }
+  tr.tx td { color: var(--blue-d); }
+  .ch { background: var(--hl); border-radius: 2px; }
+  .tbl { max-height: 65vh; overflow: auto; }
+  .r { text-align: right; }
+  .sendrow { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 10px; }
+  .sendrow:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .sendrow .full { grid-column: 1 / -1; }
+  .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
+  #log { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
+  ol { padding-left: 20px; margin: 6px 0; } li { margin: 3px 0; }
+  @media (max-width: 899px) { input[type=text], input[type=number], select { font-size: 16px; } }
+  @media (max-width: 600px) {
+    main { padding: 10px 10px 40px; }
+    .hide-s { display: none; }
+    table { font-size: 12px; }
+    .sendrow { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>CAN 工具</h1>
+  <span class="chip" id="chipDev">未连接</span>
+  <span class="chip" id="chipBus">通道关闭</span>
+  <span class="chip" id="chipRec" hidden>● 录制中</span>
+  <span id="stat"></span>
+</header>
+<nav id="tabs">
+  <button data-t="conn" class="on">连接</button>
+  <button data-t="trace">报文</button>
+  <button data-t="send">发送</button>
+  <button data-t="rec">录制</button>
+  <button data-t="fw">固件</button>
+</nav>
+<main>
+
+<section id="conn" class="on">
+  <div class="card">
+    <h2>设备</h2>
+    <div class="row">
+      <button class="b p" id="btnConnect">连接 USB 设备</button>
+      <button class="b" id="btnDemo">演示模式</button>
+      <button class="b r" id="btnDisconnect" disabled>断开</button>
+    </div>
+    <div class="row hint" id="devInfo">用 Chrome 或 Edge 打开。安卓手机用 USB-C 数据线（OTG）直连 CANable；电脑直接插 USB。</div>
+    <div class="row hint" id="noApi" hidden><span class="bad">这个浏览器不支持网页访问 USB，请用安卓或电脑上的 Chrome / Edge。iPhone 暂不支持。</span></div>
+  </div>
+
+  <div class="card">
+    <h2>总线设置</h2>
+    <div class="row">
+      <div class="fld">仲裁段波特率
+        <select id="nomRate">
+          <option value="125000">125k</option><option value="250000">250k</option>
+          <option value="500000" selected>500k</option><option value="1000000">1M</option>
+        </select></div>
+      <div class="fld">采样点 %<input type="number" id="nomSp" value="80" min="50" max="95" step="0.5" style="width:84px"></div>
+      <label style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fdOn" checked> CAN FD</label>
+    </div>
+    <div class="row" id="fdRow">
+      <div class="fld">数据段波特率
+        <select id="dataRate">
+          <option value="1000000">1M</option><option value="2000000" selected>2M</option>
+          <option value="4000000">4M</option><option value="5000000">5M</option><option value="8000000">8M</option>
+        </select></div>
+      <div class="fld">采样点 %<input type="number" id="dataSp" value="75" min="50" max="95" step="0.5" style="width:84px"></div>
+      <div class="fld">FD 类型
+        <select id="niso"><option value="0">ISO（一般选这个）</option><option value="1">非 ISO（Bosch）</option></select></div>
+    </div>
+    <div class="row">
+      <div class="fld">模式
+        <div class="seg" id="mode"><button data-v="1" class="on">只听</button><button data-v="0">正常收发</button></div></div>
+      <div class="hint" style="align-self:flex-end;max-width:520px">只听：不发任何报文、不回 ACK，不影响总线，录报文用这个。诊断、发报文要切到“正常收发”。</div>
+    </div>
+    <div class="row hint" id="timingInfo"></div>
+    <div class="row">
+      <button class="b p" id="btnOpen" disabled>打开通道</button>
+      <button class="b" id="btnClose" disabled>关闭通道</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>状态</h2>
+    <div class="kv">
+      <div><b>总线</b><span id="sBus">—</span></div>
+      <div><b>帧率</b><span id="sFps">—</span></div>
+      <div><b>负载率（估算）</b><span id="sLoad">—</span></div>
+      <div><b>错误计数 发/收</b><span id="sErr">—</span></div>
+      <div><b>丢帧</b><span id="sDrop">—</span></div>
+      <div><b>板子时钟误差</b><span id="sClk">—</span></div>
+    </div>
+    <div id="log"></div>
+  </div>
+</section>
+
+<section id="trace">
+  <div class="card">
+    <div class="row">
+      <div class="seg" id="view"><button data-v="fixed" class="on">按 ID</button><button data-v="scroll">滚动</button></div>
+      <button class="b" id="btnPause">暂停</button>
+      <button class="b" id="btnClear">清空</button>
+      <input type="text" id="filter" class="mono" placeholder="过滤 ID，如 7E0,7E8 或 700-7FF" style="flex:1;min-width:180px">
+    </div>
+    <div class="hint" id="traceInfo"></div>
+  </div>
+  <div class="card tbl" id="traceBox"></div>
+</section>
+
+<section id="send">
+  <div class="card">
+    <h2>发送报文</h2>
+    <div class="hint" id="sendHint">要先把模式切到“正常收发”并打开通道。</div>
+    <div id="sendRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 再加一条</button></div>
+  </div>
+</section>
+
+<section id="rec">
+  <div class="card">
+    <h2>录制</h2>
+    <div class="row">
+      <button class="b p" id="btnRec">开始录制</button>
+      <button class="b" id="btnMark" disabled>打标记</button>
+      <label><input type="checkbox" id="recAuto" checked> 打开通道时自动开始</label>
+    </div>
+    <div class="kv">
+      <div><b>时长</b><span id="rDur">—</span></div>
+      <div><b>帧数</b><span id="rCnt">—</span></div>
+      <div><b>标记</b><span id="rMarks">—</span></div>
+    </div>
+    <div class="hint" style="margin-top:8px">录制在这台手机 / 电脑的浏览器里，关掉网页就没了，录完记得保存。手机录制时别锁屏、别切走太久。</div>
+  </div>
+  <div class="card">
+    <h2>保存 ASC</h2>
+    <div class="row">
+      <div class="fld">范围
+        <select id="range"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select></div>
+      <div class="fld" id="fMarks" hidden>从 / 到
+        <span style="display:flex;gap:6px"><select id="mFrom"></select><select id="mTo"></select></span></div>
+      <div class="fld" id="fLast" hidden>最后多少秒<input type="number" id="lastSec" value="60" min="1" style="width:100px"></div>
+      <div class="fld" id="fCustom" hidden>从 / 到（秒）
+        <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
+    </div>
+    <div class="row">
+      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:160px">
+      <button class="b p" id="btnSave" disabled>下载</button>
+      <button class="b" id="btnShare" disabled>分享</button>
+    </div>
+    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）。</div>
+  </div>
+</section>
+
+<section id="fw">
+  <div class="card">
+    <h2>固件</h2>
+    <div class="row" id="fwNow">当前：未连接</div>
+    <div class="hint">本工具配套的是 vdlink 固件（在 CANable 2.0 原版 slcan 固件上改的，开源）。原版固件也能用，但没有准确的时间戳、采样点不能调、只听模式不生效。</div>
+  </div>
+  <div class="card">
+    <h2>刷入 vdlink 固件</h2>
+    <ol>
+      <li>拔下 CANable，把 <b>BOOT</b> 两个针脚用跳线帽短接。</li>
+      <li>重新插上（安卓手机用 OTG 线，电脑直接插），这时它是“烧录模式”，不是 CAN 设备。</li>
+      <li>点下面的按钮，在弹窗里选 <b>STM32 BOOTLOADER</b>（或 DFU in FS Mode）。</li>
+      <li>等进度走完显示“完成”，拔下来、<b>取下跳线帽</b>，再插上就是新固件。</li>
+    </ol>
+    <div class="hint">电脑（Windows）上浏览器可能看不到烧录模式的设备（缺驱动），用安卓手机刷最省事；也可以用 ST 官方的 STM32CubeProgrammer 刷 <a href="fw/vdlink-1.0.bin">vdlink-1.0.bin</a>（地址 0x08000000）。</div>
+    <div class="row" style="margin-top:10px"><button class="b p" id="btnFlash">刷入 vdlink 1.0</button></div>
+    <div class="bar"><i id="fwBar"></i></div>
+    <div class="hint" id="fwMsg"></div>
+  </div>
+</section>
+
+</main>
+<script src="slcan.js"></script>
+<script src="recorder.js"></script>
+<script src="transport.js"></script>
+<script src="demo.js"></script>
+<script src="dfu.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
