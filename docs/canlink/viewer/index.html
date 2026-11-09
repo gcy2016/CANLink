@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- CAN 工具的“离线数据”页：从 VehDiag_gnl（通用版）复制，DBC / 问卷由使用者自己加载。canlog / plot / ai / uds / dbc / qn.js 与 GNL、SEF 同源，改了要同步。 -->
+<!-- CAN 工具的“离线数据”页：从 VehDiag_gnl（通用版）复制，DBC / 问卷由使用者自己加载。canlog / plot / ai / uds / dbc / qn.js 与 GNL、SEF 同源，改了要同步。故障码页按 SEF #12 删了底部“维修前确认问卷”和两行提示。 -->
 <title>售后诊断助手</title>
 <style>
   :root {
@@ -225,11 +225,6 @@
       <div class="card" id="s3" hidden>
         <div class="step"><div class="num">4</div><h2 id="s3t">查询结果</h2></div>
         <div id="out"></div>
-      </div>
-      <div class="tip">💡 维修前请先确认诊断问卷与车型对应正确</div>
-      <div class="notes">
-        <p>⚠️ 显示码为诊断仪上显示的码（如 U210088），高中字节/低字节为十六进制（如 E100 + 88）。</p>
-        <p>⚠️ 微信内打不开？点右上角 ··· → <b>在浏览器中打开</b>。</p>
       </div>
     </div>
 

@@ -45,11 +45,11 @@
   function setSeg(id, v) { for (const x of $(id).children) x.classList.toggle('on', x.dataset.v === String(v)); }
 
   // ---------------- 设置（存在本机） ----------------
-  const cfgIds = ['nomRate', 'nomSp', 'fdOn', 'dataRate', 'dataSp', 'niso', 'recAuto'];
+  const cfgIds = ['nomRate', 'nomSp', 'fdOn', 'dataRate', 'dataSp', 'niso'];
   for (const id of cfgIds) {
     const el = $(id), v = store.get('cfg.' + id, null);
     if (v !== null) { if (el.type === 'checkbox') el.checked = v; else el.value = v; }
-    el.addEventListener('change', () => { store.set('cfg.' + id, el.type === 'checkbox' ? el.checked : el.value); updateTiming(); if (id !== 'recAuto') reopenIfOpen(); });
+    el.addEventListener('change', () => { store.set('cfg.' + id, el.type === 'checkbox' ? el.checked : el.value); updateTiming(); reopenIfOpen(); });
   }
   S.silent = store.get('cfg.silent', true);
   setSeg('mode', S.silent ? 1 : 0);
@@ -222,7 +222,6 @@
     log(`通道已打开：${rateText(nom.bitrate)}${fd ? ' / ' + rateText(dat.bitrate) + ' FD' : ''}，${S.silent ? '只听' : '正常收发'}`);
     updateSendHint();
     requestWake();
-    if ($('recAuto').checked && !S.recording) startRec();
   }
 
   async function configure(nom, dat, fd) {
@@ -266,12 +265,10 @@
   async function reopenIfOpen() {
     if (!S.open || S.reopening) return;
     S.reopening = true;
-    const rec = S.recording, auto = $('recAuto').checked;
     try {
       await closeChannel(true);
-      if (rec) $('recAuto').checked = false;  // 录制在继续，不要再新开一段
       await openChannel();
-    } finally { $('recAuto').checked = auto; S.reopening = false; }
+    } finally { S.reopening = false; }
   }
 
   function setBusChip(text, cls) {
@@ -642,7 +639,7 @@
     const dur = S.recording ? Math.max(0, S.lastT - S.recT0) : S.rec.t1Last();
     $('rDur').textContent = fmtDur(dur);
     $('rCnt').textContent = S.rec.count.toLocaleString();
-    const has = S.rec.count > 0;
+    const has = S.rec.count > 0 && !S.recording;  // 录制中下载 / 分享 / 查看都置灰
     $('btnSave').disabled = !has; $('btnView').disabled = !has; $('btnShare').disabled = !has || !navigator.share;
     $('rMarks').textContent = S.rec.marks.length ? S.rec.marks.map(m => m.t.toFixed(1) + 's').join('，') : '无';
   }
