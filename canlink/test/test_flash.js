@@ -22,7 +22,7 @@ function makeFlashEcu(reqId, respId, funcId, opt = {}) {
     const type = d[0] >> 4;
     if (type === 3) { if (ecu._pending) { const p = ecu._pending; ecu._pending = null; for (let i = p.idx; i < p.frames.length; i++) ecu.onTx({ id: respId, data: p.frames[i] }); } return; }
     let req;
-    if (type === 0) { const n = d[0] & 0x0F; req = d.slice(1, 1 + n); }
+    if (type === 0) { let n = d[0] & 0x0F, s = 1; if (n === 0 && d.length > 8) { n = d[1]; s = 2; } req = d.slice(s, s + n); }  // 含 FD 转义单帧
     else if (type === 1) { const n = ((d[0] & 0x0F) << 8) | d[1]; rx = { buf: [...d.slice(2)], n }; ecu.onTx({ id: respId, data: Uint8Array.of(0x30, 0, 0) }); return; }
     else if (type === 2) { if (!rx) return; rx.buf.push(...d.slice(1)); if (rx.buf.length >= rx.n) { req = Uint8Array.from(rx.buf.slice(0, rx.n)); rx = null; } else return; }
     if (!req) return;
@@ -50,7 +50,7 @@ function wireFlash(opt) {
   const ecu = makeFlashEcu(reqId, respId, funcId, opt);
   const tp = new Diag.IsoTp({ send: f => ecu.feed(f), log: () => { } });
   ecu.onTx = f => tp.onFrame(f);
-  return { tp, ecu, cfg: { req: reqId, resp: respId, func: funcId, fd: false, brs: false, ext: false, pad: 0 } };
+  return { tp, ecu, cfg: { req: reqId, resp: respId, func: funcId, fd: !!(opt && opt.fd), brs: !!(opt && opt.fd), ext: false, pad: 0 } };
 }
 
 const seg = (addr, len, f) => ({ addr, data: Uint8Array.from({ length: len }, (_, i) => f(i) & 0xFF) });
@@ -81,6 +81,14 @@ const seg = (addr, len, f) => ({ addr, data: Uint8Array.from({ length: len }, (_
     const app = { type: 'bin', segs: [seg(0x08020000, 130, i => i + 1)] };
     const r = await Flash.runFlash({ tp, cfg, flow, files: { app }, keyPlugin: `return [0,0,0,0];`, tester: [9], Diag, hooks: { log: () => { } } });
     ok(r.ok === true && ecu.received.length === 130, '去掉 Driver 步后只刷 App 也能跑通');
+  }
+
+  // ---- CAN FD 控制器：FD 转义单帧 + FD 多帧（首帧 64 字节）----
+  {
+    const { tp, ecu, cfg } = wireFlash({ fd: true });
+    const app = { type: 'bin', segs: [seg(0x08020000, 300, i => i * 5)] };
+    const r = await Flash.runFlash({ tp, cfg, flow: (() => { const f = JSON.parse(JSON.stringify(Flash.DEFAULT_FLOW)); f.steps = f.steps.filter(s => !(s.op === 'flash' && s.file === 'driver')); return f; })(), files: { app }, keyPlugin: `return [seed[0],seed[1],seed[2],seed[3]];`, tester: [1, 2, 3, 4], Diag, hooks: { log: () => { } } });
+    ok(r.ok === true && ecu.received.length === 300, 'CAN FD 控制器：含 FD 转义单帧和 FD 多帧也能刷通');
   }
 
   // ---- 中途失败 + 自动恢复整车 ----

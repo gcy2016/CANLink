@@ -74,6 +74,9 @@
   .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
   #log, #fLog { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
+  .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .fbtn { display: inline-block; padding: 9px 16px; border-radius: 8px; border: 1.5px solid var(--blue); background: var(--blue); color: #fff; cursor: pointer; white-space: nowrap; font-weight: 600; }
+  .fbtn:active { opacity: .85; }
   #fSteps .fstep { padding: 3px 0; font-size: 13px; }
   #fSteps .fstep.ok { color: var(--ok); } #fSteps .fstep.run { color: var(--blue); font-weight: 600; } #fSteps .fstep.fail { color: var(--bad); font-weight: 600; }
   ol { padding-left: 20px; margin: 6px 0; } li { margin: 3px 0; }
@@ -135,7 +138,7 @@
         <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
     </div>
     <div class="row">
-      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:160px">
+      <input type="text" id="recName" placeholder="文件名（可不填）" style="width:120px">
       <button class="b p" id="btnSave" disabled>下载</button>
       <button class="b" id="btnShare" disabled>分享</button>
       <button class="b" id="btnView" disabled>查看</button>
@@ -184,13 +187,13 @@
 
   <div class="card">
     <h2>控制器</h2>
-    <div class="row">
-      <div class="fld" style="flex:1;min-width:160px">选择控制器
+    <div class="row" style="align-items:flex-end">
+      <div class="fld" style="flex:1;min-width:140px">选择控制器
         <select id="ctrlSel"></select></div>
       <button class="b" id="ctrlAdd">新增</button>
       <button class="b r" id="ctrlDel">删除</button>
     </div>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <div class="fld">名称<input type="text" id="cName" style="width:130px"></div>
       <div class="fld">请求 ID<input type="text" class="mono" id="cReq" style="width:100px"></div>
       <div class="fld">响应 ID<input type="text" class="mono" id="cResp" style="width:100px"></div>
@@ -198,16 +201,10 @@
       <div class="fld">填充字节<input type="text" class="mono" id="cPad" placeholder="00" style="width:70px"></div>
     </div>
     <div class="row">
-      <label><input type="checkbox" id="cFd"> CAN FD</label>
-      <label><input type="checkbox" id="cBrs" checked> BRS</label>
+      <label><input type="checkbox" id="cFd" checked> CAN FD</label>
       <label><input type="checkbox" id="cExt"> 扩展帧（29 位 ID）</label>
-      <span style="margin-left:auto;display:flex;gap:6px">
-        <button class="b" id="ctrlExport">导出</button>
-        <button class="b" id="ctrlImport">导入</button>
-        <input type="file" id="ctrlFile" accept=".json" hidden>
-      </span>
     </div>
-    <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器，导出备份、换设备导入。保密内容不进仓库。</div>
+    <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器。保密内容不进仓库。</div>
   </div>
 
   <div class="card">
@@ -244,22 +241,18 @@
   </div>
 
   <div class="card">
-    <h2>读 / 写数据（DID）</h2>
-    <div class="row">
+    <h2>读写数据（DID） / 例程控制（31）</h2>
+    <div class="row" style="align-items:flex-end">
       <div class="fld">DID<input type="text" class="mono" id="didId" placeholder="如 FD54" style="width:100px"></div>
       <button class="b p" id="btnReadDid">读</button>
-      <div class="fld" style="flex:1;min-width:140px">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01"></div>
+      <div class="fld" style="flex:1;min-width:120px">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01"></div>
       <button class="b r" id="btnWriteDid">写</button>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>例程控制（31）</h2>
-    <div class="row">
-      <div class="fld">类型
+    <div class="row" style="align-items:flex-end">
+      <div class="fld">例程类型
         <select id="rtnType"><option value="01">启动</option><option value="02">停止</option><option value="03">读结果</option></select></div>
       <div class="fld">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:100px"></div>
-      <div class="fld" style="flex:1;min-width:120px">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填"></div>
+      <div class="fld" style="flex:1;min-width:110px">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填"></div>
       <button class="b p" id="btnRtn">执行</button>
     </div>
   </div>
@@ -308,19 +301,28 @@
   </div>
 
   <div class="card">
-    <h2>刷写文件</h2>
+    <h2>内置配置</h2>
+    <p class="hint">控制器、安全算法、诊断仪编号、刷写流程已加密内置在网页里（仓库是公开的，内容加密存放）。输入网页密码解锁载入，不用手填；载入后会覆盖下面各项和“诊断”页的当前控制器 / 安全算法。</p>
     <div class="row">
-      <label class="fld">Driver（引导驱动，可不选）
-        <input type="file" id="fDrv" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex,.bin">
-      </label>
-      <label class="fld">App（应用程序）
-        <input type="file" id="fApp" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex,.bin">
-      </label>
+      <input type="password" inputmode="numeric" id="fPin" placeholder="网页密码" class="mono" style="max-width:180px">
+      <button class="b p" id="fUnlock">解锁载入</button>
+      <span class="hint" id="fUnlockSt"></span>
     </div>
-    <label class="fld" style="margin-top:8px">原始 .bin 的起始地址（只有选 .bin 时才用，十六进制）
-      <input type="text" class="mono" id="fBinAddr" placeholder="如 08020000" style="max-width:180px">
-    </label>
-    <div class="hint" id="fInfo" style="margin-top:8px">选文件后这里显示识别出的格式和各段地址 / 大小。</div>
+  </div>
+
+  <div class="card">
+    <h2>刷写文件</h2>
+    <div class="frow">
+      <label class="fbtn" for="fDrv">选择文件</label>
+      <input type="file" id="fDrv" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
+      <span><b>Driver</b> <span class="hint" id="fDrvName">（引导驱动，可不选）</span></span>
+    </div>
+    <div class="frow">
+      <label class="fbtn" for="fApp">选择文件</label>
+      <input type="file" id="fApp" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
+      <span><b>App</b> <span class="hint" id="fAppName">（应用程序）</span></span>
+    </div>
+    <div class="hint" id="fInfo" style="margin-top:8px">支持 S19 / HEX。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
   </div>
 
   <div class="card">

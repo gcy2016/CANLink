@@ -44,15 +44,15 @@ const DemoTransport = (() => {
     }
     reply(ok) { this.send(ok ? '\r' : '\x07'); }
     // 演示用诊断控制器：ISO-TP 重组请求，按服务回应答（内容是编的，跟任何车型无关）
-    diag(data) {
-      const RESP = 0x7E8;
+    diag(data, reqId) {
+      const RESP = reqId === 0x7DF ? 0x7E8 : ((reqId || 0x7E0) + 8) & 0x7FF;   // 物理请求 N → 响应 N+8（7E0→7E8 等）
       const type = data[0] >> 4;
       if (type === 3) {  // 我们多帧应答时，对方回的流控：把剩下的连续帧发出去
         if (this._cf) { const cf = this._cf; this._cf = null; for (const fr of cf) this.send(this.frameLine({ id: RESP, data: fr, us: this.us() }, false)); }
         return;
       }
       let req;
-      if (type === 0) { const nn = data[0] & 0x0F; req = data.slice(1, 1 + nn); }
+      if (type === 0) { let nn = data[0] & 0x0F, s = 1; if (nn === 0 && data.length > 8) { nn = data[1]; s = 2; } req = data.slice(s, s + nn); }  // 支持 FD 转义单帧（00 LEN）
       else if (type === 1) { this._rx = { n: ((data[0] & 0x0F) << 8) | data[1], buf: [...data.slice(2)] }; this.send(this.frameLine({ id: RESP, data: Uint8Array.of(0x30, 0, 0), us: this.us() }, false)); return; }
       else if (type === 2) { if (!this._rx) return; this._rx.buf.push(...data.slice(1)); if (this._rx.buf.length >= this._rx.n) { req = Uint8Array.from(this._rx.buf.slice(0, this._rx.n)); this._rx = null; } else return; }
       if (!req || !req.length) return;
@@ -111,7 +111,8 @@ const DemoTransport = (() => {
           const f = { id, ext, fd: /[dDbB]/.test(c), brs: /[bB]/.test(c), data, us: this.us() };
           if (this.echo) this.send(this.frameLine(f, true));
           // 模拟一个会 ISO-TP 应答的诊断控制器（请求 7E0 / 功能 7DF → 响应 7E8）
-          if (!ext && (id === 0x7E0 || id === 0x7DF)) this.diag(data);
+          // 演示 ECU：功能寻址 7DF，或 0x700-0x7EF 里的物理请求（请求 N、响应 N+8），都应答
+          if (!ext && (id === 0x7DF || (id >= 0x700 && id <= 0x7EF && (id & 8) === 0))) this.diag(data, id);
         }
       }
     }

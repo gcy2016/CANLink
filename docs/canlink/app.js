@@ -482,7 +482,7 @@
 
   // 控制器配置（本机保存，可导入导出；ID 等保密内容由用户填，不进仓库）
   let ctrls = store.get('ctrls', null);
-  if (!ctrls || !ctrls.length) ctrls = [{ name: '控制器 1', req: '7E0', resp: '7E8', func: '7DF', pad: '00', fd: false, brs: true, ext: false }];
+  if (!ctrls || !ctrls.length) ctrls = [{ name: '控制器 1', req: '7E0', resp: '7E8', func: '7DF', pad: '00', fd: true, brs: true, ext: false }];
   let curCtrl = Math.min(store.get('ctrlCur', 0), ctrls.length - 1);
   const saveCtrls = () => { store.set('ctrls', ctrls); store.set('ctrlCur', curCtrl); };
   function curCfg() {
@@ -499,26 +499,14 @@
     const c = ctrls[curCtrl] || {};
     $('cName').value = c.name || ''; $('cReq').value = c.req || ''; $('cResp').value = c.resp || '';
     $('cFunc').value = c.func || ''; $('cPad').value = c.pad || ''; $('cFd').checked = !!c.fd;
-    $('cBrs').checked = c.brs !== false; $('cExt').checked = !!c.ext;
+    $('cExt').checked = !!c.ext;
   }
-  for (const [el, k, t] of [['cName', 'name', 's'], ['cReq', 'req', 's'], ['cResp', 'resp', 's'], ['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cBrs', 'brs', 'b'], ['cExt', 'ext', 'b']]) {
+  for (const [el, k, t] of [['cName', 'name', 's'], ['cReq', 'req', 's'], ['cResp', 'resp', 's'], ['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cExt', 'ext', 'b']]) {
     $(el).addEventListener('change', () => { ctrls[curCtrl][k] = t === 'b' ? $(el).checked : $(el).value.trim(); saveCtrls(); if (el === 'cName') renderCtrlSel(); renderResp(true); });
   }
   $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); });
-  $('ctrlAdd').onclick = () => { ctrls.push({ name: '控制器 ' + (ctrls.length + 1), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : false, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
+  $('ctrlAdd').onclick = () => { ctrls.push({ name: '控制器 ' + (ctrls.length + 1), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
   $('ctrlDel').onclick = () => { if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${ctrls[curCtrl].name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
-  $('ctrlExport').onclick = () => {
-    const blob = new Blob([JSON.stringify({ app: 'vdlink-ctrls', version: 1, ctrls }, null, 1)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'can_controllers.json';
-    document.body.appendChild(a); a.click(); a.remove();
-  };
-  $('ctrlImport').onclick = () => $('ctrlFile').click();
-  $('ctrlFile').onchange = async () => {
-    const f = $('ctrlFile').files[0]; if (!f) return;
-    try { const j = JSON.parse(await f.text()); const arr = Array.isArray(j) ? j : j.ctrls; if (!Array.isArray(arr) || !arr.length) throw new Error('文件里没有控制器'); ctrls = arr; curCtrl = 0; saveCtrls(); renderCtrlSel(); alert(`已导入 ${arr.length} 个控制器`); }
-    catch (e) { alert('导入失败：' + e.message); }
-    $('ctrlFile').value = '';
-  };
 
   // ISO-TP 实时收发引擎：发帧走原始帧通道，收到的每一帧喂给它
   const diagLog = m => { $('diagOut').innerHTML = `<span class="hint">${esc(m)}</span>`; };
@@ -693,6 +681,41 @@
   $('fTester').value = store.get('flashTester', '');
   $('fTester').addEventListener('change', () => store.set('flashTester', $('fTester').value));
 
+  // 内置配置：控制器 / 安全算法 / 诊断仪编号 / 刷写流程加密放在 secrets.enc.json，用网页密码解锁载入。
+  // 加密方案同 SEF 主站（PBKDF2-SHA256 + AES-256-GCM），密码不进仓库。
+  const b64u = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function unlockSecrets(pin) {
+    const enc = await (await fetch('secrets.enc.json', { cache: 'no-cache' })).json();
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64u(enc.salt), iterations: enc.iter },
+      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u(enc.iv) }, key, b64u(enc.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  function applySecrets(sec) {
+    if (sec.secCode) { secCode = sec.secCode; store.set('secCode', secCode); $('secCode').value = secCode; $('secSt').textContent = '已载入内置算法'; }
+    if (sec.tester) { $('fTester').value = sec.tester; store.set('flashTester', sec.tester); }
+    if (sec.flow) { $('fFlow').value = JSON.stringify(sec.flow, null, 1); store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = '已载入内置流程'; }
+    if (sec.ctrl) {
+      let idx = ctrls.findIndex(c => c.name === sec.ctrl.name);
+      if (idx < 0) { ctrls.push({ ...sec.ctrl }); idx = ctrls.length - 1; } else ctrls[idx] = { ...ctrls[idx], ...sec.ctrl };
+      curCtrl = idx; saveCtrls(); renderCtrlSel();
+    }
+    flashCtrlHint();
+  }
+  $('fUnlock').onclick = async () => {
+    const pin = $('fPin').value.trim();
+    if (!pin) { $('fUnlockSt').textContent = '先输入网页密码'; return; }
+    $('fUnlockSt').textContent = '解锁中…'; $('fUnlock').disabled = true;
+    let sec;
+    try { sec = await unlockSecrets(pin); }
+    catch (e) { $('fUnlockSt').innerHTML = '<span class="bad">密码错误或解锁失败</span>'; $('fUnlock').disabled = false; return; }
+    applySecrets(sec);
+    $('fPin').value = ''; $('fUnlock').disabled = false;
+    $('fUnlockSt').innerHTML = '<span class="good">已载入：安全算法、诊断仪编号、刷写流程' + (sec.ctrl ? '、控制器 ' + esc(sec.ctrl.name || '') : '') + '</span>';
+  };
+  $('fPin').addEventListener('keydown', e => { if (e.key === 'Enter') $('fUnlock').click(); });
+
   function flowDefault() { return JSON.stringify(Flash.DEFAULT_FLOW, null, 1); }
   $('fFlow').value = store.get('flashFlow', '') || flowDefault();
   $('fFlow').addEventListener('change', () => { store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = ''; });
@@ -716,25 +739,17 @@
     return flow;
   }
 
+  const fNameSpan = which => which === 'driver' ? 'fDrvName' : 'fAppName';
   async function loadFlashFile(which, file) {
     if (!file) { flashFiles[which] = null; renderFileInfo(); return; }
     try {
-      const nameLow = file.name.toLowerCase();
-      let res;
-      if (/\.(bin)$/.test(nameLow)) {
-        const addr = parseInt(String($('fBinAddr').value).trim().replace(/^0x/i, ''), 16);
-        if (isNaN(addr)) throw new Error('选了 .bin，请先在下面填起始地址（十六进制）');
-        res = FlashFile.parse(new Uint8Array(await file.arrayBuffer()), undefined, addr);
-      } else {
-        res = FlashFile.parse(await file.text());
-      }
-      flashFiles[which] = res;
-    } catch (e) { flashFiles[which] = null; alert(`${which === 'driver' ? 'Driver' : 'App'} 解析失败：` + e.message); }
+      flashFiles[which] = FlashFile.parse(await file.text());   // S19 / HEX（文本格式）
+      $(fNameSpan(which)).textContent = file.name;
+    } catch (e) { flashFiles[which] = null; $(fNameSpan(which)).textContent = '解析失败'; alert(`${which === 'driver' ? 'Driver' : 'App'} 解析失败：` + e.message); }
     renderFileInfo();
   }
   $('fDrv').onchange = () => loadFlashFile('driver', $('fDrv').files[0]);
   $('fApp').onchange = () => loadFlashFile('app', $('fApp').files[0]);
-  $('fBinAddr').addEventListener('change', () => { if ($('fDrv').files[0] && /\.bin$/i.test($('fDrv').files[0].name)) loadFlashFile('driver', $('fDrv').files[0]); if ($('fApp').files[0] && /\.bin$/i.test($('fApp').files[0].name)) loadFlashFile('app', $('fApp').files[0]); });
 
   function renderFileInfo() {
     const one = (label, r) => {

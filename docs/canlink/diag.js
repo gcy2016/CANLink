@@ -67,7 +67,7 @@
       return frames;
     }
     // 多帧：首帧 FF
-    const ff = new Uint8Array((cfg.fd ? fdLen(0) : 8));
+    const ff = new Uint8Array(cfg.fd ? 64 : 8);   // FD 首帧用 64 字节
     ff.fill(pad);
     ff[0] = 0x10 | ((p.length >> 8) & 0x0F); ff[1] = p.length & 0xFF;
     const ffData = Math.min(p.length, ff.length - 2);
