@@ -139,6 +139,32 @@
         } catch (e) { return finish({ error: e.message }); }
       });
     }
+    // 发连续帧：bs=每块帧数（0=一次全发），stmin=帧间隔（0x00-0x7F 毫秒，0xF1-0xF9 微秒级这里当 1ms）。
+    // 多帧刷写（34/36）可能有上百帧，按 ECU 的流控节流，别一次全灌。
+    _pumpCF(bs, stmin) {
+      const t = this.tx; if (!t) return;
+      const ms = stmin <= 0x7F ? stmin : (stmin >= 0xF1 && stmin <= 0xF9 ? 1 : 1);
+      const step = () => {
+        if (this.tx !== t) return;            // 已被取消或换了事务
+        let n = 0;
+        while (t.idx < t.frames.length) {
+          try { this.send(this._frame(t.cfg, t.frames[t.idx])); } catch (e) { this.tx = null; return; }
+          t.idx++; n++;
+          if (t.idx >= t.frames.length) { this.tx = null; return; } // 发完，等响应
+          if (bs && n >= bs) return;          // 这一块发够了，等 ECU 下一个流控
+          if (ms > 0) { setTimeout(step, ms); return; }
+        }
+        this.tx = null;
+      };
+      step();
+    }
+
+    // 发一条不等应答的请求（功能寻址广播：3E 80、85 82、28 83、10 83 等，都在单帧内）
+    sendNoWait(cfg, payload) {
+      const frames = buildFrames(cfg, payload);
+      for (const f of frames) { try { this.send(this._frame(cfg, f)); } catch (e) { break; } }
+    }
+
     _fc(cfg) { // 流控：清除发送，BS=0，STmin=0
       const pad = cfg.pad == null ? 0 : cfg.pad & 0xFF;
       const n = cfg.fd ? 8 : 8; const f = new Uint8Array(n).fill(pad);
@@ -153,11 +179,9 @@
       // 我们正在发多帧，等 ECU 的流控帧
       if (this.tx && id === (this.tx.cfg.resp & 0x1FFFFFFF) && type === 3) {
         const fs = d[0] & 0x0F;
-        if (fs === 1) return;                 // WAIT：继续等
+        if (fs === 1) return;                 // WAIT：继续等下一个流控
         if (fs === 2) { this.tx = null; return; } // 溢出：放弃
-        // CTS：把剩下的连续帧发出去（BS=0 当作一次全发；STmin 简化为不等待）
-        const t = this.tx; this.tx = null;
-        for (let i = t.idx; i < t.frames.length; i++) { try { this.send(this._frame(t.cfg, t.frames[i])); } catch (e) { break; } }
+        this._pumpCF(d[1], d[2]);             // CTS：按块大小 BS、帧间隔 STmin 发连续帧
         return;
       }
       if (!this.rx || id !== this.rx.resp) return;

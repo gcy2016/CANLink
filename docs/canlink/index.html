@@ -42,8 +42,9 @@
   label { display: inline-flex; align-items: center; gap: 6px; }
   .fld { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
   input, select, button { font: inherit; }
-  input[type=text], input[type=number], select { padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); min-width: 0; }
-  input:focus, select:focus { outline: none; border-color: var(--blue); }
+  input[type=text], input[type=number], select, textarea { padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); min-width: 0; }
+  textarea { font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); }
   input.mono { font-family: var(--mono); }
   button.b { padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--blue); background: #fff; color: var(--blue); cursor: pointer; white-space: nowrap; }
   button.b.p { background: var(--blue); color: #fff; }
@@ -72,7 +73,9 @@
   .sendrow .btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
-  #log { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
+  #log, #fLog { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
+  #fSteps .fstep { padding: 3px 0; font-size: 13px; }
+  #fSteps .fstep.ok { color: var(--ok); } #fSteps .fstep.run { color: var(--blue); font-weight: 600; } #fSteps .fstep.fail { color: var(--bad); font-weight: 600; }
   ol { padding-left: 20px; margin: 6px 0; } li { margin: 3px 0; }
   @media (max-width: 899px) { input[type=text], input[type=number], select { font-size: 16px; } }
   @media (max-width: 600px) {
@@ -300,7 +303,56 @@
 <section id="flash">
   <div class="card">
     <h2>刷写</h2>
-    <p class="hint">开发中（阶段 3）：通用刷写，刷写流程写成配置，不同专业的控制器换一份配置就能刷。见 issue #11。</p>
+    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）和<b>安全算法插件</b>都在“诊断”页选 / 加载。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX / bin。</p>
+    <div class="hint" id="fCtrl"></div>
+  </div>
+
+  <div class="card">
+    <h2>刷写文件</h2>
+    <div class="row">
+      <label class="fld">Driver（引导驱动，可不选）
+        <input type="file" id="fDrv" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex,.bin">
+      </label>
+      <label class="fld">App（应用程序）
+        <input type="file" id="fApp" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex,.bin">
+      </label>
+    </div>
+    <label class="fld" style="margin-top:8px">原始 .bin 的起始地址（只有选 .bin 时才用，十六进制）
+      <input type="text" class="mono" id="fBinAddr" placeholder="如 08020000" style="max-width:180px">
+    </label>
+    <div class="hint" id="fInfo" style="margin-top:8px">选文件后这里显示识别出的格式和各段地址 / 大小。</div>
+  </div>
+
+  <div class="card">
+    <h2>指纹诊断仪编号</h2>
+    <label class="fld">写指纹（2E F1 84）时跟在日期后面的编号，十六进制，由你填，不进仓库
+      <input type="text" class="mono" id="fTester" placeholder="如 01 02 03 04" style="max-width:240px">
+    </label>
+  </div>
+
+  <details class="card">
+    <summary>刷写流程（高级：步骤、指令、等待时间）</summary>
+    <p class="hint" style="margin-top:8px">默认是标准 UDS 刷写顺序，换控制器 / 供应商改这里。顶层 <code>alfid</code> 地址/长度格式、<code>timeout</code> 每条等待毫秒、<code>recovery</code> 中途失败恢复整车的功能寻址指令；<code>steps</code> 每步有 <code>op</code>（req 物理请求 / func 功能寻址不等应答 / security 安全访问 / fingerprint 写指纹 / tp_on / tp_off 保持在线 / flash 刷文件 / delay 等待）、<code>name</code>、<code>data</code>、<code>wait</code>。flash 步的 <code>file</code> 是 driver/app，<code>erase</code> 先擦除、<code>activate</code> 后激活。</p>
+    <textarea id="fFlow" style="width:100%;min-height:240px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="b" id="fFlowReset">恢复默认流程</button>
+      <button class="b" id="fFlowExport">导出</button>
+      <button class="b" id="fFlowImport">导入</button>
+      <input type="file" id="fFlowFile" accept=".json,application/json" hidden>
+      <span class="hint" id="fFlowSt"></span>
+    </div>
+  </details>
+
+  <div class="card">
+    <div class="hint" style="margin-bottom:10px">开始前确认：<b>蓄电池电压正常 / 接好充电宝</b>，手机设成不自动锁屏，中途别拔线、别切后台、别关通道。刷写时整车其他控制器会被静默，失败会尝试自动恢复；若提示停在 Boot，重新刷一次。</div>
+    <div class="row">
+      <button class="b p" id="fStart">开始刷写</button>
+      <button class="b r" id="fStop" hidden>停止</button>
+    </div>
+    <div class="bar" style="margin-top:12px"><i id="fBar"></i></div>
+    <div class="hint" id="fProg" style="margin-top:5px"></div>
+    <div id="fSteps" style="margin-top:10px"></div>
+    <div id="fLog" style="margin-top:8px"></div>
   </div>
 </section>
 
@@ -377,6 +429,8 @@
 <script src="dfu.js"></script>
 <script src="viewer/uds.js"></script>
 <script src="diag.js"></script>
+<script src="flashfile.js"></script>
+<script src="flash.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

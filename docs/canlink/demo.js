@@ -57,6 +57,8 @@ const DemoTransport = (() => {
       else if (type === 2) { if (!this._rx) return; this._rx.buf.push(...data.slice(1)); if (this._rx.buf.length >= this._rx.n) { req = Uint8Array.from(this._rx.buf.slice(0, this._rx.n)); this._rx = null; } else return; }
       if (!req || !req.length) return;
       const sid = req[0];
+      // 带“抑制正响应”位（子功能 bit7=1，如 10 83 / 28 83 / 85 82 / 3E 80）的，真实 ECU 不回应答
+      if ([0x10, 0x11, 0x28, 0x85, 0x3E].includes(sid) && (req[1] & 0x80)) return;
       let p;
       if (sid === 0x10) p = [0x50, req[1], 0x00, 0x32, 0x01, 0xF4];
       else if (sid === 0x11) p = [0x51, req[1]];
@@ -66,6 +68,9 @@ const DemoTransport = (() => {
       else if (sid === 0x22) p = [0x62, req[1], req[2], 0x01, 0x23];
       else if (sid === 0x2E) p = [0x6E, req[1], req[2]];
       else if (sid === 0x31) p = [0x71, req[1], req[2], req[3], 0x00];
+      else if (sid === 0x34) p = [0x74, 0x20, 0x00, 0x82];   // 请求下载：支持，每块最多 0x0082=130 字节
+      else if (sid === 0x36) p = [0x76, req[1]];             // 传输数据：回块序号
+      else if (sid === 0x37) p = [0x77];                     // 退出传输
       else if (sid === 0x27 && (req[1] & 1)) p = [0x67, req[1], 0x11, 0x22, 0x33, 0x44];
       else if (sid === 0x27) p = [0x67, req[1]];
       else p = [0x7F, sid, 0x11];

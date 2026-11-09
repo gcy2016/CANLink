@@ -33,6 +33,7 @@
     for (const s of document.querySelectorAll('main > section')) s.classList.toggle('on', s.id === b.dataset.t);
     if (b.dataset.t === 'trace') { if (S.tmode === 'offline') requestAnimationFrame(fitViewer); else renderTrace(true); }
     if (b.dataset.t === 'send') renderResp(true);
+    if (b.dataset.t === 'flash') flashCtrlHint();
     store.set('tab', b.dataset.t);
   });
   function seg(id, cb) {
@@ -683,6 +684,125 @@
   });
   $('btnAddSend').onclick = () => { cmds.push({ name: '', data: '' }); saveCmds(); renderSend(); const ins = document.querySelectorAll('#sendRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
   renderSend();
+
+  // ---------------- 刷写（阶段 3） ----------------
+  // 复用诊断页的当前控制器 curCfg() 和安全算法插件 secCode；文件解析用 FlashFile，流程引擎用 Flash。
+  const flashFiles = { driver: null, app: null };   // 解析后的 { type, segs }
+  let flashing = false, flashStop = false;
+
+  $('fTester').value = store.get('flashTester', '');
+  $('fTester').addEventListener('change', () => store.set('flashTester', $('fTester').value));
+
+  function flowDefault() { return JSON.stringify(Flash.DEFAULT_FLOW, null, 1); }
+  $('fFlow').value = store.get('flashFlow', '') || flowDefault();
+  $('fFlow').addEventListener('change', () => { store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = ''; });
+  $('fFlowReset').onclick = () => { if (!confirm('恢复默认刷写流程？当前改动会丢。')) return; $('fFlow').value = flowDefault(); store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = '已恢复默认'; };
+  $('fFlowExport').onclick = () => {
+    const blob = new Blob([$('fFlow').value], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'flash_flow.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  $('fFlowImport').onclick = () => $('fFlowFile').click();
+  $('fFlowFile').onchange = async () => {
+    const f = $('fFlowFile').files[0]; if (!f) return;
+    try { const txt = await f.text(); JSON.parse(txt); $('fFlow').value = txt; store.set('flashFlow', txt); $('fFlowSt').textContent = '已导入'; }
+    catch (e) { alert('导入失败（不是合法 JSON）：' + e.message); }
+    $('fFlowFile').value = '';
+  };
+
+  function parseFlow() {
+    let flow; try { flow = JSON.parse($('fFlow').value); } catch (e) { throw new Error('刷写流程不是合法 JSON：' + e.message); }
+    if (!flow || !Array.isArray(flow.steps) || !flow.steps.length) throw new Error('刷写流程里没有 steps');
+    return flow;
+  }
+
+  async function loadFlashFile(which, file) {
+    if (!file) { flashFiles[which] = null; renderFileInfo(); return; }
+    try {
+      const nameLow = file.name.toLowerCase();
+      let res;
+      if (/\.(bin)$/.test(nameLow)) {
+        const addr = parseInt(String($('fBinAddr').value).trim().replace(/^0x/i, ''), 16);
+        if (isNaN(addr)) throw new Error('选了 .bin，请先在下面填起始地址（十六进制）');
+        res = FlashFile.parse(new Uint8Array(await file.arrayBuffer()), undefined, addr);
+      } else {
+        res = FlashFile.parse(await file.text());
+      }
+      flashFiles[which] = res;
+    } catch (e) { flashFiles[which] = null; alert(`${which === 'driver' ? 'Driver' : 'App'} 解析失败：` + e.message); }
+    renderFileInfo();
+  }
+  $('fDrv').onchange = () => loadFlashFile('driver', $('fDrv').files[0]);
+  $('fApp').onchange = () => loadFlashFile('app', $('fApp').files[0]);
+  $('fBinAddr').addEventListener('change', () => { if ($('fDrv').files[0] && /\.bin$/i.test($('fDrv').files[0].name)) loadFlashFile('driver', $('fDrv').files[0]); if ($('fApp').files[0] && /\.bin$/i.test($('fApp').files[0].name)) loadFlashFile('app', $('fApp').files[0]); });
+
+  function renderFileInfo() {
+    const one = (label, r) => {
+      if (!r) return '';
+      const segs = r.segs.map(s => `0x${(s.addr >>> 0).toString(16).toUpperCase()}（${s.data.length} 字节）`).join('、');
+      return `<div><b>${label}</b>：${r.type.toUpperCase()}，${r.segs.length} 段，共 ${FlashFile.total(r.segs)} 字节<br><span class="hint">${esc(segs)}</span></div>`;
+    };
+    const h = one('Driver', flashFiles.driver) + one('App', flashFiles.app);
+    $('fInfo').innerHTML = h || '选文件后这里显示识别出的格式和各段地址 / 大小。';
+  }
+
+  function flashCtrlHint() {
+    const c = ctrls[curCtrl] || {};
+    $('fCtrl').innerHTML = `当前控制器：<b>${esc(c.name || '控制器')}</b>　请求 ${esc(c.req || '?')} / 响应 ${esc(c.resp || '?')} / 功能 ${esc(c.func || '?')}　${c.fd ? 'CAN FD' : '经典 CAN'}　安全算法：${secCode ? '已加载' : '<span class="warn">未加载</span>'}（都在“诊断”页改）`;
+  }
+
+  function flog(msg, cls) {
+    const el = $('fLog'); const t = new Date().toTimeString().slice(0, 8);
+    el.insertAdjacentHTML('beforeend', `<div class="${cls || ''}">${t} ${esc(msg)}</div>`);
+    while (el.childNodes.length > 200) el.removeChild(el.firstChild);
+    el.scrollTop = el.scrollHeight;
+  }
+  function renderSteps(steps, curIdx, status) {
+    $('fSteps').innerHTML = steps.map((s, i) => {
+      let cls = '', mark = '○';
+      if (i < curIdx || (i === curIdx && status === 'ok')) { cls = 'ok'; mark = '✓'; }
+      else if (i === curIdx && status === 'run') { cls = 'run'; mark = '▶'; }
+      else if (i === curIdx && status === 'fail') { cls = 'fail'; mark = '✗'; }
+      return `<div class="fstep ${cls}">${mark} ${esc(s.name || s.op)}</div>`;
+    }).join('');
+  }
+
+  renderFileInfo(); flashCtrlHint();
+
+  $('fStop').onclick = () => { flashStop = true; $('fStop').textContent = '正在停止…'; };
+  $('fStart').onclick = async () => {
+    if (flashing) return;
+    const why = diagReady();
+    if (why) { alert('还不能刷写：' + why); return; }
+    let flow;
+    try { flow = parseFlow(); } catch (e) { alert(e.message); return; }
+    if (!flashFiles.driver && !flashFiles.app) { alert('先选 Driver 或 App 文件'); return; }
+    const needFp = flow.steps.some(s => s.op === 'fingerprint');
+    let tester = [];
+    try { tester = Flash.parseHex($('fTester').value); } catch (e) { /* ignore，下面判断 */ }
+    if (needFp && !tester.length) { if (!confirm('没填指纹诊断仪编号，将用全 0 写指纹，继续？')) return; }
+    if (!confirm('确认开始刷写？\n请先确认电压 / 充电宝接好、手机不锁屏，中途别拔线。')) return;
+
+    flashing = true; flashStop = false;
+    $('fStart').disabled = true; $('fStop').hidden = false; $('fStop').textContent = '停止';
+    $('fLog').innerHTML = ''; $('fBar').style.width = '0'; $('fProg').textContent = '';
+    renderSteps(flow.steps, -1, '');
+    try {
+      const r = await Flash.runFlash({
+        tp: S.tp, cfg: curCfg(), flow, files: flashFiles, keyPlugin: secCode, tester, Diag,
+        hooks: {
+          log: flog,
+          shouldStop: () => flashStop,
+          onStep: (i, total, s, st, msg) => { if (st === 'fail') { renderSteps(flow.steps, lastRunIdx, 'fail'); } else { if (st === 'run') lastRunIdx = i; renderSteps(flow.steps, i, st); } },
+          onProgress: (frac, text) => { $('fBar').style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; $('fProg').textContent = text || ''; },
+        },
+      });
+      if (r.ok) { $('fBar').style.width = '100%'; $('fProg').innerHTML = '<span class="good">刷写完成</span>'; }
+      else { $('fProg').innerHTML = '<span class="bad">刷写失败：' + esc(r.error || '') + '</span>'; }
+    } catch (e) { flog('出错：' + e.message, 'bad'); $('fProg').innerHTML = '<span class="bad">出错：' + esc(e.message) + '</span>'; }
+    finally { flashing = false; $('fStart').disabled = false; $('fStop').hidden = true; }
+  };
+  let lastRunIdx = -1;
 
   // ---- 手动发送原始帧（不走 ISO-TP，用于非诊断报文 / 循环发送） ----
   const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false, brs: false }, store.get('sendCfg', {}));
