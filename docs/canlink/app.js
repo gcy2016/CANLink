@@ -622,7 +622,13 @@
     updateMarks();
     if (S.rec) log(`录制停止：${S.rec.count} 帧`);
   }
-  $('btnRec').onclick = () => { if (S.recording) stopRec(); else startRec(); };
+  // 开始录制时通道没开：先连上设备、打开通道（打开通道本身会按设置自动开始录制）
+  $('btnRec').onclick = async () => {
+    if (S.recording) { stopRec(); return; }
+    if (!S.dev) { log('先连接设备', 'bad'); $('devInfo').innerHTML = '<span class="warn">还没连接设备：先点“连接设备”。</span>'; return; }
+    if (!S.open) await openChannel();
+    if (S.open && !S.recording) startRec();
+  };
   $('btnMark').onclick = () => {
     if (!S.recording) return;
     const t = Math.max(0, (S.lastT || 0) - S.recT0);
