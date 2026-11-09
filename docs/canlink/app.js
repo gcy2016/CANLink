@@ -323,6 +323,7 @@
     const t = frameTime(m);
     S.lastT = t;
     m.t = t;
+    if (!m.tx && S.tp) S.tp.onFrame(m);   // 喂给 ISO-TP 引擎（只喂收到的，不喂自己的回显）
     S.stats.frames++;
     S.stats.bits += Slcan.frameBits(m, S.nominal, S.data);
 
@@ -467,118 +468,263 @@
   }
   setInterval(() => renderTrace(false), 250);
 
-  // ---------------- 发送 ----------------
-  // 发送设置（ID、帧类型、周期）只有一份，下面是常用指令（名称 + 数据），都存在本机
-  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false, brs: false }, store.get('sendCfg', {}));
+  // ---------------- 诊断（阶段 2） ----------------
+  const parseId = v => parseInt(String(v).trim().replace(/^0x/i, ''), 16);
+  const parseHex = t => {
+    const h = String(t).replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
+    if (h.length % 2) throw new Error('数据要按字节写（两位十六进制一个字节）');
+    const a = new Uint8Array(h.length / 2);
+    for (let i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16);
+    return a;
+  };
+  const hexs = a => Array.from(a, b => hx(b)).join(' ');
+
+  // 控制器配置（本机保存，可导入导出；ID 等保密内容由用户填，不进仓库）
+  let ctrls = store.get('ctrls', null);
+  if (!ctrls || !ctrls.length) ctrls = [{ name: '控制器 1', req: '7E0', resp: '7E8', func: '7DF', pad: '00', fd: false, brs: true, ext: false }];
+  let curCtrl = Math.min(store.get('ctrlCur', 0), ctrls.length - 1);
+  const saveCtrls = () => { store.set('ctrls', ctrls); store.set('ctrlCur', curCtrl); };
+  function curCfg() {
+    const c = ctrls[curCtrl] || {};
+    const pad = String(c.pad || '').trim();
+    return { req: parseId(c.req), resp: parseId(c.resp), func: c.func ? parseId(c.func) : null,
+      fd: !!c.fd, brs: c.brs !== false, ext: !!c.ext, pad: pad ? parseId(pad) & 0xFF : 0 };
+  }
+  function renderCtrlSel() {
+    $('ctrlSel').innerHTML = ctrls.map((c, i) => `<option value="${i}"${i === curCtrl ? ' selected' : ''}>${esc(c.name || ('控制器 ' + (i + 1)))}</option>`).join('');
+    fillCtrlFields();
+  }
+  function fillCtrlFields() {
+    const c = ctrls[curCtrl] || {};
+    $('cName').value = c.name || ''; $('cReq').value = c.req || ''; $('cResp').value = c.resp || '';
+    $('cFunc').value = c.func || ''; $('cPad').value = c.pad || ''; $('cFd').checked = !!c.fd;
+    $('cBrs').checked = c.brs !== false; $('cExt').checked = !!c.ext;
+  }
+  for (const [el, k, t] of [['cName', 'name', 's'], ['cReq', 'req', 's'], ['cResp', 'resp', 's'], ['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cBrs', 'brs', 'b'], ['cExt', 'ext', 'b']]) {
+    $(el).addEventListener('change', () => { ctrls[curCtrl][k] = t === 'b' ? $(el).checked : $(el).value.trim(); saveCtrls(); if (el === 'cName') renderCtrlSel(); renderResp(true); });
+  }
+  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); });
+  $('ctrlAdd').onclick = () => { ctrls.push({ name: '控制器 ' + (ctrls.length + 1), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : false, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
+  $('ctrlDel').onclick = () => { if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${ctrls[curCtrl].name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
+  $('ctrlExport').onclick = () => {
+    const blob = new Blob([JSON.stringify({ app: 'vdlink-ctrls', version: 1, ctrls }, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'can_controllers.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  $('ctrlImport').onclick = () => $('ctrlFile').click();
+  $('ctrlFile').onchange = async () => {
+    const f = $('ctrlFile').files[0]; if (!f) return;
+    try { const j = JSON.parse(await f.text()); const arr = Array.isArray(j) ? j : j.ctrls; if (!Array.isArray(arr) || !arr.length) throw new Error('文件里没有控制器'); ctrls = arr; curCtrl = 0; saveCtrls(); renderCtrlSel(); alert(`已导入 ${arr.length} 个控制器`); }
+    catch (e) { alert('导入失败：' + e.message); }
+    $('ctrlFile').value = '';
+  };
+
+  // ISO-TP 实时收发引擎：发帧走原始帧通道，收到的每一帧喂给它
+  const diagLog = m => { $('diagOut').innerHTML = `<span class="hint">${esc(m)}</span>`; };
+  S.tp = new Diag.IsoTp({ send: rawSendFrame, log: diagLog });
+
+  function rawSendFrame(f) {
+    send(Slcan.frameCmd(f));
+    if (!S.fw || !S.fw.vdlink) {   // 原版固件不回显：自己记一条 Tx
+      const n = f.fd ? Slcan.FD_LEN[Slcan.LEN_DLC(f.data.length)] : f.data.length;
+      const data = new Uint8Array(n).fill(0xCC); data.set(f.data);
+      onFrame({ kind: 'frame', tx: true, id: f.id, ext: f.ext, fd: f.fd, brs: f.brs, rtr: false, dlc: f.fd ? Slcan.LEN_DLC(n) : n, data, ts: null });
+    }
+  }
+
+  function diagReady() {
+    if (!S.dev) return '先在“录制”页连接设备。';
+    if (!S.open) return '通道没打开：到“录制”页点“打开通道”。';
+    if (S.openSilent) return '现在是只听模式：到“设置”里改成“正常收发”。';
+    const c = curCfg();
+    if (isNaN(c.req) || isNaN(c.resp)) return '先在上面把当前控制器的请求 ID、响应 ID 填好。';
+    return '';
+  }
+  // 发一条 UDS 请求并把结果显示出来；返回引擎结果
+  async function udsReq(payload, opt = {}) {
+    const why = diagReady(); if (why) { diagLog('发不了：' + why); updateSendHint(); return { blocked: why }; }
+    const c = curCfg();
+    const cfg = opt.functional ? { ...c, req: c.func } : c;
+    if (opt.functional && isNaN(c.func)) { diagLog('没填功能寻址 ID'); return { blocked: 1 }; }
+    const r = await S.tp.request(cfg, Uint8Array.from(payload), { timeout: opt.timeout || 2500 });
+    showResp(payload, r, opt);
+    return r;
+  }
+  function showResp(reqBytes, r, opt = {}) {
+    const sid = reqBytes[0];
+    let h = `<div class="mono" style="color:var(--blue-d)">→ ${hexs(reqBytes)}　<span class="hint">${esc(Diag.serviceName(sid))}</span></div>`;
+    if (r.timeout) h += '<div class="bad">ECU 无响应（超时）。检查 ID、波特率、是否在只听模式、线是否接好。</div>';
+    else if (r.error) h += '<div class="bad">出错：' + esc(r.error) + '</div>';
+    else if (r.nrc !== undefined) h += `<div class="bad">否定响应 0x${hx(r.nrc)}：${esc(r.nrcText)}</div>`;
+    else if (r.data) {
+      h += `<div class="mono" style="color:var(--ok)">← ${hexs(r.data)}</div>`;
+      if (r.data[0] === (sid | 0x40)) h += `<div class="good">正响应（${esc(Diag.serviceName(sid))} 成功）</div>`;
+    }
+    if (!opt.keepList) $('diagOut').innerHTML = h;
+    else $('diagOut').innerHTML = h;
+  }
+
+  // 会话 / 复位按钮
+  $('diagBtns').addEventListener('click', e => {
+    const b = e.target.closest('button[data-uds]'); if (!b) return;
+    udsReq(parseHex(b.dataset.uds));
+  });
+  // 保持在线（循环 3E 80）
+  let tpTimer = null;
+  $('btnTp').onclick = () => {
+    if (tpTimer) { clearInterval(tpTimer); tpTimer = null; $('btnTp').textContent = '保持在线：关'; $('btnTp').classList.remove('p'); return; }
+    if (diagReady()) { udsReq([0x3E, 0x80]); return; }
+    udsReq([0x3E, 0x80]);
+    tpTimer = setInterval(() => { const c = curCfg(); if (!S.open || S.openSilent) return; S.tp.request(c, Uint8Array.of(0x3E, 0x80), { timeout: 1000 }); }, 2000);
+    $('btnTp').textContent = '保持在线：开（每 2 秒）'; $('btnTp').classList.add('p');
+  };
+
+  // 安全访问
+  let secCode = store.get('secCode', '');
+  $('secCode').value = secCode;
+  $('secSt').textContent = secCode ? '已加载算法' : '未加载算法';
+  $('btnSecEdit').onclick = () => { $('secBox').hidden = !$('secBox').hidden; };
+  $('secSave').onclick = () => { secCode = $('secCode').value; store.set('secCode', secCode); $('secSt').textContent = secCode ? '已保存' : '已清空'; };
+  $('secClear').onclick = () => { secCode = ''; $('secCode').value = ''; store.set('secCode', ''); $('secSt').textContent = '已清空'; };
+  $('btnSec').onclick = async () => {
+    const lvl = Math.max(1, +$('secLevel').value || 1);
+    const reqSub = 2 * lvl - 1, keySub = 2 * lvl;
+    const seedR = await udsReq([0x27, reqSub]);
+    if (!seedR.data || seedR.data[0] !== 0x67) return;
+    const seed = seedR.data.slice(2);
+    if (seed.every(b => b === 0)) { $('diagOut').innerHTML += '<div class="good">种子全 0，可能已经解锁。</div>'; return; }
+    if (!secCode) { $('diagOut').innerHTML += '<div class="warn">拿到种子了，但还没加载安全算法。点“算法插件…”把算法贴进去。种子：' + hexs(seed) + '</div>'; return; }
+    let key;
+    try { key = Diag.runKeyPlugin(secCode, seed, lvl, seedR.data); }
+    catch (e) { $('diagOut').innerHTML += '<div class="bad">算法出错：' + esc(e.message) + '</div>'; return; }
+    if (!key || !key.length) { $('diagOut').innerHTML += '<div class="bad">算法没返回 key</div>'; return; }
+    await udsReq([0x27, keySub, ...key]);
+  };
+
+  // 故障码：读 + 清，读出来对照问卷
+  function loadQn() {
+    try { const j = JSON.parse(localStorage.getItem('clv_qn')); if (j && j.models) return j.models.flatMap(m => m.items || []); } catch (e) { /* ignore */ }
+    return [];
+  }
+  $('btnReadDtc').onclick = async () => {
+    const sub = parseHex($('dtcSub').value || '02 FF');
+    const r = await udsReq([0x19, ...sub]);
+    if (!r.data) { $('dtcBox').innerHTML = ''; return; }
+    const parsed = Diag.parseDtcResp(r.data);
+    if (!parsed || !parsed.list) { $('dtcBox').innerHTML = '<div class="hint">不是标准读故障码应答，原始数据见上方。</div>'; return; }
+    if (!parsed.list.length) { $('dtcBox').innerHTML = '<div class="good">无故障码。</div>'; return; }
+    const qn = loadQn();
+    let h = `<div class="hint">共 ${parsed.list.length} 条：</div>`;
+    for (const d of parsed.list) {
+      const it = qn.find(x => x.d === d.code);
+      h += `<div style="border-top:1px dashed var(--line);padding:6px 0">
+        <div><b class="mono">${d.code}</b>　<span class="hint">状态 0x${hx(d.status)}：${esc(d.statusText)}</span></div>`;
+      if (it) { h += `<div>${esc(it.desc || '')}</div>`; if (it.cause) h += `<div class="hint">可能原因：${esc(it.cause)}</div>`; if (it.fix) h += `<div class="hint">维修建议：${esc(it.fix)}</div>`; }
+      else h += '<div class="hint">问卷里没查到（到“查看 → 离线数据”加载对应诊断问卷后可显示含义）。</div>';
+      h += '</div>';
+    }
+    $('dtcBox').innerHTML = h;
+  };
+  $('btnClrDtc').onclick = async () => {
+    if (!confirm('确定清除当前控制器的故障码？')) return;
+    await udsReq([0x14, 0xFF, 0xFF, 0xFF]); $('dtcBox').innerHTML = '';
+  };
+
+  // 读 / 写 DID
+  $('btnReadDid').onclick = () => { try { const did = parseHex($('didId').value); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (e) { diagLog(e.message); } };
+  $('btnWriteDid').onclick = async () => {
+    try {
+      const did = parseHex($('didId').value), data = parseHex($('didData').value);
+      if (did.length < 1) throw new Error('填 DID');
+      if (!confirm(`写 DID ${hexs(did)}：${hexs(data)}？`)) return;
+      await udsReq([0x2E, ...did, ...data]);
+    } catch (e) { diagLog(e.message); }
+  };
+  // 例程控制
+  $('btnRtn').onclick = () => {
+    try { const id = parseHex($('rtnId').value); if (id.length < 2) throw new Error('例程 ID 要 2 字节，如 0203'); const param = $('rtnParam').value.trim() ? parseHex($('rtnParam').value) : []; udsReq([0x31, parseInt($('rtnType').value, 16), ...id, ...param]); }
+    catch (e) { diagLog(e.message); }
+  };
+
+  // ---- 常用指令（UDS 数据，经 ISO-TP 发给当前控制器） ----
   let cmds = store.get('cmds', null);
   if (!cmds) {
     const old = store.get('send', null);   // 旧版每条单独存 ID 的格式
-    cmds = old ? old.map(r => ({ name: '', data: r.data })) : [
-      { name: '进扩展会话', data: '02 10 03' }, { name: '读故障码', data: '03 19 02 FF' }, { name: '保持在线', data: '02 3E 80' }];
-  }
-  const cyclic = new Map();
-  const sf = { sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd', sBrs: 'brs' };
-  for (const [el, k] of Object.entries(sf)) {
-    const x = $(el);
-    if (x.type === 'checkbox') x.checked = !!SC[k]; else x.value = SC[k];
-    x.addEventListener('change', () => { SC[k] = x.type === 'checkbox' ? x.checked : x.value; store.set('sendCfg', SC); renderResp(true); });
+    const strip = d => { const a = parseHex(d); return (a.length && a[0] <= 7 && a[0] === a.length - 1) ? hexs(a.slice(1)) : d; }; // 去掉旧的单帧长度前缀
+    cmds = old ? old.map(r => ({ name: '', data: strip(r.data) })) : [
+      { name: '进扩展会话', data: '10 03' }, { name: '读故障码', data: '19 02 FF' }, { name: '保持在线', data: '3E 80' }];
   }
   const saveCmds = () => store.set('cmds', cmds);
-
-  function updateSendHint() {
-    const ok = S.open && !S.openSilent;
-    let h = '可以发送。';
-    if (!S.dev) h = '<span class="warn">先在“录制”页连接设备。</span>';
-    else if (!S.open) h = '<span class="warn">通道没打开：到“录制”页点“打开通道”。</span>';
-    else if (S.openSilent) h = '<span class="warn">现在是只听模式，发不了：到“设置”里把模式改成“正常收发”（会自动重开通道）。</span>';
-    $('sendHint').innerHTML = h;
-    for (const b of document.querySelectorAll('#sendRows button.tx')) b.disabled = !ok;
-  }
   function renderSend() {
     let h = '';
     cmds.forEach((r, i) => {
       h += `<div class="sendrow" data-i="${i}">
         <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称（可不填）">
-        <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="数据，如 02 10 03">
+        <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="UDS 数据，如 10 03">
         <div class="btns">
           <button class="b p tx" data-a="once">发送</button>
-          <button class="b tx" data-a="cyc">${cyclic.has(i) ? '停止' : '循环'}</button>
           <button class="b r" data-a="del">删除</button>
         </div></div>`;
     });
     $('sendRows').innerHTML = h || '<div class="hint">还没有指令，点“加一条”。</div>';
     updateSendHint();
   }
-  $('sendRows').addEventListener('change', e => {
-    const row = e.target.closest('.sendrow'); if (!row) return;
-    cmds[+row.dataset.i][e.target.dataset.k] = e.target.value;
-    saveCmds();
-  });
+  $('sendRows').addEventListener('change', e => { const row = e.target.closest('.sendrow'); if (!row) return; cmds[+row.dataset.i][e.target.dataset.k] = e.target.value; saveCmds(); });
   $('sendRows').addEventListener('keydown', e => {
     if (e.key !== 'Enter' || e.target.dataset.k !== 'data') return;
-    const row = e.target.closest('.sendrow');
-    cmds[+row.dataset.i].data = e.target.value; saveCmds();
-    sendData(e.target.value).catch(err => log('发送失败：' + err.message, 'bad'));
+    const row = e.target.closest('.sendrow'); cmds[+row.dataset.i].data = e.target.value; saveCmds();
+    try { udsReq(parseHex(e.target.value)); } catch (err) { diagLog(err.message); }
   });
-  const parseId = v => parseInt(String(v).trim().replace(/^0x/i, ''), 16);
+  $('sendRows').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const i = +b.closest('.sendrow').dataset.i, r = cmds[i];
+    if (b.dataset.a === 'once') { try { await udsReq(parseHex(r.data)); } catch (err) { diagLog('发送失败：' + err.message); } }
+    else if (b.dataset.a === 'del') { if (!confirm(`删除“${r.name || r.data}”？`)) return; cmds.splice(i, 1); saveCmds(); renderSend(); }
+  });
+  $('btnAddSend').onclick = () => { cmds.push({ name: '', data: '' }); saveCmds(); renderSend(); const ins = document.querySelectorAll('#sendRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
+  renderSend();
+
+  // ---- 手动发送原始帧（不走 ISO-TP，用于非诊断报文 / 循环发送） ----
+  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false, brs: false }, store.get('sendCfg', {}));
+  const cyclic = new Map();
+  for (const [el, k] of Object.entries({ sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd', sBrs: 'brs' })) {
+    const x = $(el); if (x.type === 'checkbox') x.checked = !!SC[k]; else x.value = SC[k];
+    x.addEventListener('change', () => { SC[k] = x.type === 'checkbox' ? x.checked : x.value; store.set('sendCfg', SC); });
+  }
   function buildFrame(dataText) {
-    const id = parseId(SC.id);
-    if (isNaN(id)) throw new Error('发送 ID 不对');
-    const hex = String(dataText).replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
-    if (hex.length % 2) throw new Error('数据要按字节写（两位十六进制一个字节）');
-    const data = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < data.length; i++) data[i] = parseInt(hex.substr(i * 2, 2), 16);
+    const id = parseId(SC.id); if (isNaN(id)) throw new Error('发送 ID 不对');
+    const data = parseHex(dataText);
     return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd && !!SC.brs, data };
   }
   async function sendData(dataText) {
     if (!S.open || S.openSilent) throw new Error('通道没打开，或者是只听模式');
-    const f = buildFrame(dataText);
-    await send(Slcan.frameCmd(f));
-    // 原版固件不回显发送的报文：自己记一条（时间用本机时间）
-    if (!S.fw.vdlink) {
-      const n = f.fd ? Slcan.FD_LEN[Slcan.LEN_DLC(f.data.length)] : f.data.length;
-      const data = new Uint8Array(n).fill(0xCC); data.set(f.data);
-      onFrame({ kind: 'frame', tx: true, id: f.id, ext: f.ext, fd: f.fd, brs: f.brs, rtr: false, dlc: f.fd ? Slcan.LEN_DLC(n) : n, data, ts: null });
-    }
+    rawSendFrame(buildFrame(dataText));
   }
-  $('sendRows').addEventListener('click', async e => {
-    const b = e.target.closest('button'); if (!b) return;
-    const i = +b.closest('.sendrow').dataset.i, r = cmds[i];
-    try {
-      if (b.dataset.a === 'once') await sendData(r.data);
-      else if (b.dataset.a === 'del') {
-        if (!confirm(`删除“${r.name || r.data}”？`)) return;
-        stopCyclic(); cmds.splice(i, 1); saveCmds(); renderSend();
-      } else if (b.dataset.a === 'cyc') {
-        if (cyclic.has(i)) stopCyclic(i);
-        else {
-          buildFrame(r.data);
-          const ms = Math.max(1, +SC.cyc || 100);
-          cyclic.set(i, setInterval(() => sendData(r.data).catch(err => { stopCyclic(i); log('循环发送停止：' + err.message, 'bad'); }), ms));
-        }
-        renderSend();
-      }
-    } catch (err) { log('发送失败：' + err.message, 'bad'); updateSendHint(); }
-  });
-  function stopCyclic(i) {
-    if (i === undefined) { for (const t of cyclic.values()) clearInterval(t); cyclic.clear(); }
-    else { clearInterval(cyclic.get(i)); cyclic.delete(i); }
-    for (const b of document.querySelectorAll('#sendRows button[data-a=cyc]')) {
-      const k = +b.closest('.sendrow').dataset.i; b.textContent = cyclic.has(k) ? '停止' : '循环';
-    }
-  }
-  $('btnAddSend').onclick = () => { cmds.push({ name: '', data: '' }); saveCmds(); renderSend(); const ins = document.querySelectorAll('#sendRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
-  renderSend();
+  $('btnRawSend').onclick = () => {
+    const v = $('rawData').value;
+    if (cyclic.has('raw')) { clearInterval(cyclic.get('raw')); cyclic.delete('raw'); $('btnRawSend').textContent = '发送'; return; }
+    const ms = +SC.cyc;
+    if (ms && ms >= 1 && /\S/.test(v)) {
+      try { buildFrame(v); } catch (e) { diagLog(e.message); return; }
+      cyclic.set('raw', setInterval(() => sendData(v).catch(err => { clearInterval(cyclic.get('raw')); cyclic.delete('raw'); $('btnRawSend').textContent = '发送'; diagLog('循环停止：' + err.message); }), ms));
+      $('btnRawSend').textContent = '停止循环';
+    } else sendData(v).catch(err => diagLog('发送失败：' + err.message));
+  };
+  function stopCyclic() { for (const t of cyclic.values()) clearInterval(t); cyclic.clear(); const b = $('btnRawSend'); if (b) b.textContent = '发送'; }
 
-  // 最近收发：发送 ID 和回复 ID 的报文。回复 ID 不填时：7DF → 7E8~7EF，7xx → +8，18DAxxyy → 18DAyyxx
+  function updateSendHint() {
+    const why = diagReady();
+    $('diagHint').innerHTML = why ? '<span class="warn">' + why + '</span>' : '<span class="good">可以诊断。</span>';
+    $('sendHint').innerHTML = why ? '<span class="warn">' + why + '</span>' : '可以发送。';
+    for (const b of document.querySelectorAll('#sendRows button.tx')) b.disabled = !!why;
+  }
+
+  // 最近收发：当前控制器的请求 ID 和响应 ID（含功能寻址）
   function respIds() {
-    const tx = parseId(SC.id);
-    if (String(SC.resp).trim()) { const r = parseId(SC.resp); return isNaN(r) ? [] : [r]; }
-    if (isNaN(tx)) return [];
-    if (tx === 0x7DF) return [0x7E8, 0x7E9, 0x7EA, 0x7EB, 0x7EC, 0x7ED, 0x7EE, 0x7EF];
-    if (tx >= 0x700 && tx <= 0x7F7) return [tx + 8];
-    if ((tx >>> 16) === 0x18DA || (tx >>> 16) === 0x18DB) return [(0x18DA0000 | ((tx & 0xFF) << 8) | ((tx >> 8) & 0xFF)) >>> 0];
-    return [];
+    const c = curCfg(); const rs = [];
+    if (!isNaN(c.resp)) rs.push(c.resp);
+    if (c.func === 0x7DF) for (let i = 0x7E8; i <= 0x7EF; i++) rs.push(i);
+    return rs;
   }
   let respRender = 0;
   function renderResp(force) {
@@ -586,16 +732,17 @@
     const now = performance.now();
     if (!force && now - respRender < 300) return;
     respRender = now;
-    const tx = parseId(SC.id), rs = respIds();
-    const list = S.recent.filter(m => (m.tx && m.id === tx) || (!m.tx && rs.includes(m.id))).slice(-30);
-    $('respInfo').textContent = rs.length ? `（发送 ${hx(tx || 0, 3)}，回复 ${rs.map(x => hx(x, 3)).join('/')}）` : '';
+    const c = curCfg(), rs = respIds();
+    const list = S.recent.filter(m => (m.tx && m.id === c.req) || (!m.tx && rs.includes(m.id))).slice(-30);
+    $('respInfo').textContent = !isNaN(c.req) ? `（发送 ${hx(c.req, 3)}，回复 ${rs.map(x => hx(x, 3)).join('/') || '—'}）` : '';
     let h = '<table><thead><tr><th>时间 s</th><th>ID</th><th>数据</th></tr></thead><tbody>';
     for (let i = list.length - 1; i >= 0; i--) {
       const m = list[i];
-      h += `<tr class="${m.tx ? 'tx' : ''}"><td>${m.t.toFixed(3)}</td><td>${m.tx ? '→' : '←'}${idText(m.id, m.ext)}</td><td class="d">${Array.from(m.data, b => hx(b)).join(' ')}</td></tr>`;
+      h += `<tr class="${m.tx ? 'tx' : ''}"><td>${m.t.toFixed(3)}</td><td>${m.tx ? '→' : '←'}${idText(m.id, m.ext)}</td><td class="d">${hexs(m.data)}</td></tr>`;
     }
     $('respBox').innerHTML = list.length ? h + '</tbody></table>' : '<div class="hint">还没有收发。</div>';
   }
+  renderCtrlSel();
   setInterval(() => renderResp(false), 300);
 
   // ---------------- 录制 ----------------

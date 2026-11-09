@@ -43,6 +43,44 @@ const DemoTransport = (() => {
       if (out) this.send(out);
     }
     reply(ok) { this.send(ok ? '\r' : '\x07'); }
+    // 演示用诊断控制器：ISO-TP 重组请求，按服务回应答（内容是编的，跟任何车型无关）
+    diag(data) {
+      const RESP = 0x7E8;
+      const type = data[0] >> 4;
+      if (type === 3) {  // 我们多帧应答时，对方回的流控：把剩下的连续帧发出去
+        if (this._cf) { const cf = this._cf; this._cf = null; for (const fr of cf) this.send(this.frameLine({ id: RESP, data: fr, us: this.us() }, false)); }
+        return;
+      }
+      let req;
+      if (type === 0) { const nn = data[0] & 0x0F; req = data.slice(1, 1 + nn); }
+      else if (type === 1) { this._rx = { n: ((data[0] & 0x0F) << 8) | data[1], buf: [...data.slice(2)] }; this.send(this.frameLine({ id: RESP, data: Uint8Array.of(0x30, 0, 0), us: this.us() }, false)); return; }
+      else if (type === 2) { if (!this._rx) return; this._rx.buf.push(...data.slice(1)); if (this._rx.buf.length >= this._rx.n) { req = Uint8Array.from(this._rx.buf.slice(0, this._rx.n)); this._rx = null; } else return; }
+      if (!req || !req.length) return;
+      const sid = req[0];
+      let p;
+      if (sid === 0x10) p = [0x50, req[1], 0x00, 0x32, 0x01, 0xF4];
+      else if (sid === 0x11) p = [0x51, req[1]];
+      else if (sid === 0x3E) p = [0x7E, req[1] || 0];
+      else if (sid === 0x14) p = [0x54];
+      else if (sid === 0x19) p = [0x59, req[1] || 0x02, 0xFF, 0x50, 0x1F, 0x00, 0x09, 0xC1, 0x23, 0x45, 0x08, 0xE1, 0x5F, 0x00, 0x01];
+      else if (sid === 0x22) p = [0x62, req[1], req[2], 0x01, 0x23];
+      else if (sid === 0x2E) p = [0x6E, req[1], req[2]];
+      else if (sid === 0x31) p = [0x71, req[1], req[2], req[3], 0x00];
+      else if (sid === 0x27 && (req[1] & 1)) p = [0x67, req[1], 0x11, 0x22, 0x33, 0x44];
+      else if (sid === 0x27) p = [0x67, req[1]];
+      else p = [0x7F, sid, 0x11];
+      setTimeout(() => this.sendResp(RESP, p), 5);
+    }
+    sendResp(id, payload) {
+      const p = Uint8Array.from(payload);
+      if (p.length <= 7) { const d = new Uint8Array(8); d[0] = p.length; d.set(p, 1); this.send(this.frameLine({ id, data: d, us: this.us() }, false)); return; }
+      // 多帧：首帧 + 连续帧（等对方流控）
+      const ff = new Uint8Array(8); ff[0] = 0x10 | ((p.length >> 8) & 0x0F); ff[1] = p.length & 0xFF; ff.set(p.subarray(0, 6), 2);
+      const cf = []; let off = 6, sn = 1;
+      while (off < p.length) { const d = new Uint8Array(8); d[0] = 0x20 | (sn & 0x0F); d.set(p.subarray(off, off + 7), 1); cf.push(d); off += 7; sn++; }
+      this._cf = cf;
+      this.send(this.frameLine({ id, data: ff, us: this.us() }, false));
+    }
     async write(text) {
       for (const cmd of text.split('\r')) {
         if (!cmd) continue;
@@ -67,14 +105,8 @@ const DemoTransport = (() => {
           for (let i = 0; i < n; i++) data[i] = parseInt(cmd.substr(2 + idLen + 2 * i, 2), 16);
           const f = { id, ext, fd: /[dDbB]/.test(c), brs: /[bB]/.test(c), data, us: this.us() };
           if (this.echo) this.send(this.frameLine(f, true));
-          // 模拟一个会应答诊断请求的控制器：请求 ID + 8 回一帧
-          if (!ext && id >= 0x700 && id <= 0x7F7 && n >= 2) {
-            setTimeout(() => {
-              const resp = new Uint8Array(f.fd ? 8 : 8).fill(0xAA);
-              resp[0] = 0x03; resp[1] = 0x7F; resp[2] = data[1]; resp[3] = 0x11;
-              this.send(this.frameLine({ id: id + 8, ext: false, fd: false, data: resp, us: this.us() }, false));
-            }, 5);
-          }
+          // 模拟一个会 ISO-TP 应答的诊断控制器（请求 7E0 / 功能 7DF → 响应 7E8）
+          if (!ext && (id === 0x7E0 || id === 0x7DF)) this.diag(data);
         }
       }
     }

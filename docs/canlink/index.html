@@ -177,9 +177,104 @@
 </section>
 
 <section id="send">
+  <div class="hint" id="diagHint" style="margin-bottom:10px"></div>
+
   <div class="card">
-    <h2>发送</h2>
-    <div class="hint" id="sendHint"></div>
+    <h2>控制器</h2>
+    <div class="row">
+      <div class="fld" style="flex:1;min-width:160px">选择控制器
+        <select id="ctrlSel"></select></div>
+      <button class="b" id="ctrlAdd">新增</button>
+      <button class="b r" id="ctrlDel">删除</button>
+    </div>
+    <div class="row">
+      <div class="fld">名称<input type="text" id="cName" style="width:130px"></div>
+      <div class="fld">请求 ID<input type="text" class="mono" id="cReq" style="width:100px"></div>
+      <div class="fld">响应 ID<input type="text" class="mono" id="cResp" style="width:100px"></div>
+      <div class="fld">功能寻址 ID<input type="text" class="mono" id="cFunc" placeholder="如 7DF" style="width:100px"></div>
+      <div class="fld">填充字节<input type="text" class="mono" id="cPad" placeholder="00" style="width:70px"></div>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="cFd"> CAN FD</label>
+      <label><input type="checkbox" id="cBrs" checked> BRS</label>
+      <label><input type="checkbox" id="cExt"> 扩展帧（29 位 ID）</label>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="b" id="ctrlExport">导出</button>
+        <button class="b" id="ctrlImport">导入</button>
+        <input type="file" id="ctrlFile" accept=".json" hidden>
+      </span>
+    </div>
+    <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器，导出备份、换设备导入。保密内容不进仓库。</div>
+  </div>
+
+  <div class="card">
+    <h2>会话 / 安全 / 复位</h2>
+    <div class="row" id="diagBtns">
+      <button class="b" data-uds="10 01">默认会话</button>
+      <button class="b" data-uds="10 03">扩展会话</button>
+      <button class="b" data-uds="10 02">编程会话</button>
+      <button class="b" data-uds="11 01">硬复位</button>
+      <button class="b" data-uds="11 03">软复位</button>
+      <button class="b" id="btnTp">保持在线：关</button>
+    </div>
+    <div class="row" style="border-top:1px dashed var(--line);padding-top:10px">
+      <div class="fld">安全等级<input type="number" id="secLevel" value="1" min="1" style="width:70px"></div>
+      <button class="b p" id="btnSec">安全访问解锁</button>
+      <button class="b" id="btnSecEdit">算法插件…</button>
+    </div>
+    <div id="secBox" hidden style="margin-top:8px">
+      <div class="hint">粘贴你的安全算法（一段 JS）。可用变量：<code>seed</code>（字节数组）、<code>level</code>（等级）、<code>req</code>（请求字节）；返回 key（字节数组或十六进制字符串）。在你自己的设备上运行，<b>不会上传、不进仓库</b>。</div>
+      <textarea id="secCode" class="mono" rows="5" style="width:100%;margin-top:6px;border:1.5px solid var(--line);border-radius:8px;padding:8px" placeholder="// 例：\nconst s=(seed[0]<<24|seed[1]<<16|seed[2]<<8|seed[3])>>>0;\nconst k=(s ^ 0x12345678)>>>0;\nreturn [k>>>24,k>>16&255,k>>8&255,k&255];"></textarea>
+      <div class="row" style="margin-top:6px"><button class="b p" id="secSave">保存</button><button class="b r" id="secClear">清除</button><span class="hint" id="secSt"></span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>故障码</h2>
+    <div class="row">
+      <div class="fld">读取子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:100px"></div>
+      <button class="b p" id="btnReadDtc">读故障码</button>
+      <button class="b r" id="btnClrDtc">清故障码</button>
+    </div>
+    <div class="hint" id="dtcHint">子功能默认 <code>02 FF</code>（按状态掩码读）。读出的故障码会对照“查看 → 离线数据”里加载的诊断问卷显示含义。</div>
+    <div id="dtcBox" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>读 / 写数据（DID）</h2>
+    <div class="row">
+      <div class="fld">DID<input type="text" class="mono" id="didId" placeholder="如 FD54" style="width:100px"></div>
+      <button class="b p" id="btnReadDid">读</button>
+      <div class="fld" style="flex:1;min-width:140px">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01"></div>
+      <button class="b r" id="btnWriteDid">写</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>例程控制（31）</h2>
+    <div class="row">
+      <div class="fld">类型
+        <select id="rtnType"><option value="01">启动</option><option value="02">停止</option><option value="03">读结果</option></select></div>
+      <div class="fld">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:100px"></div>
+      <div class="fld" style="flex:1;min-width:120px">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填"></div>
+      <button class="b p" id="btnRtn">执行</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>诊断应答</h2>
+    <div id="diagOut" class="hint">点上面的按钮，或在下面“手动发送”里发诊断指令，结果显示在这里。</div>
+  </div>
+
+  <div class="card">
+    <h2>常用指令 <span class="hint" style="font-weight:400">（名称 + UDS 数据，自动保存在本机；通过 ISO-TP 发给当前控制器并解析应答）</span></h2>
+    <div id="sendRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 加一条</button></div>
+  </div>
+
+  <details class="card" id="rawBox">
+    <summary>手动发送原始帧（不走 ISO-TP）</summary>
+    <div class="hint" id="sendHint" style="margin-top:8px"></div>
     <div class="row" style="margin-top:8px">
       <div class="fld">发送 ID<input type="text" class="mono" id="sId" style="width:120px"></div>
       <div class="fld">看回复 ID<input type="text" class="mono" id="sResp" placeholder="自动" style="width:120px"></div>
@@ -190,12 +285,12 @@
       <label><input type="checkbox" id="sFd"> CAN FD</label>
       <label><input type="checkbox" id="sBrs"> BRS</label>
     </div>
-  </div>
-  <div class="card">
-    <h2>常用指令 <span class="hint" style="font-weight:400">（自动保存在本机，可在“设置”里导出备份）</span></h2>
-    <div id="sendRows"></div>
-    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 加一条</button></div>
-  </div>
+    <div class="row" style="margin-top:6px">
+      <input type="text" id="rawData" class="mono" placeholder="原始数据，如 02 10 03" style="flex:1;min-width:160px">
+      <button class="b p" id="btnRawSend">发送</button>
+    </div>
+  </details>
+
   <div class="card">
     <h2>最近收发 <span class="hint" style="font-weight:400" id="respInfo"></span></h2>
     <div class="tbl" id="respBox" style="max-height:40vh"></div>
@@ -280,6 +375,8 @@
 <script src="transport.js"></script>
 <script src="demo.js"></script>
 <script src="dfu.js"></script>
+<script src="viewer/uds.js"></script>
+<script src="diag.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
