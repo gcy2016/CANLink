@@ -119,18 +119,6 @@
     <div class="hint" style="margin-top:8px">录制在这台手机 / 电脑的浏览器里，关掉网页就没了，录完记得保存。</div>
   </div>
 
-  <details class="card" id="busBox">
-    <summary>总线状态</summary>
-    <div class="kv" style="margin-top:10px">
-      <div><b>总线</b><span id="sBus">—</span></div>
-      <div><b>帧率</b><span id="sFps">—</span></div>
-      <div><b>负载率（估算）</b><span id="sLoad">—</span></div>
-      <div><b>错误计数 发/收</b><span id="sErr">—</span></div>
-      <div><b>丢帧</b><span id="sDrop">—</span></div>
-      <div><b>板子时钟误差</b><span id="sClk">—</span></div>
-    </div>
-    <div id="log"></div>
-  </details>
 
   <div class="card">
     <h2>保存 ASC</h2>
@@ -147,12 +135,31 @@
       <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:160px">
       <button class="b p" id="btnSave" disabled>下载</button>
       <button class="b" id="btnShare" disabled>分享</button>
+      <button class="b" id="btnView" disabled>查看</button>
     </div>
-    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）。</div>
+    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
   </div>
+
+  <details class="card" id="busBox">
+    <summary>总线状态</summary>
+    <div class="kv" style="margin-top:10px">
+      <div><b>总线</b><span id="sBus">—</span></div>
+      <div><b>帧率</b><span id="sFps">—</span></div>
+      <div><b>负载率（估算）</b><span id="sLoad">—</span></div>
+      <div><b>错误计数 发/收</b><span id="sErr">—</span></div>
+      <div><b>丢帧</b><span id="sDrop">—</span></div>
+      <div><b>板子时钟误差</b><span id="sClk">—</span></div>
+    </div>
+    <div id="log"></div>
+  </details>
 </section>
 
 <section id="trace">
+  <div class="row" style="margin-bottom:10px">
+    <div class="seg" id="tmode"><button data-v="online" class="on">在线报文</button><button data-v="offline">离线数据</button></div>
+    <span class="hint" id="tmodeHint"></span>
+  </div>
+  <div id="onlineBox">
   <div class="card">
     <div class="row">
       <div class="seg" id="view"><button data-v="fixed" class="on">按 ID</button><button data-v="scroll">滚动</button></div>
@@ -163,6 +170,10 @@
     <div class="hint" id="traceInfo"></div>
   </div>
   <div class="card tbl" id="traceBox"></div>
+  </div>
+  <div id="offlineBox" hidden>
+    <iframe id="viewerFrame" title="离线数据" style="width:100%;border:0;border-radius:12px;background:var(--bg);display:block"></iframe>
+  </div>
 </section>
 
 <section id="send">

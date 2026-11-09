@@ -31,7 +31,7 @@
     const b = e.target.closest('button'); if (!b) return;
     for (const x of $('tabs').children) x.classList.toggle('on', x === b);
     for (const s of document.querySelectorAll('main > section')) s.classList.toggle('on', s.id === b.dataset.t);
-    if (b.dataset.t === 'trace') renderTrace(true);
+    if (b.dataset.t === 'trace') { if (S.tmode === 'offline') requestAnimationFrame(fitViewer); else renderTrace(true); }
     if (b.dataset.t === 'send') renderResp(true);
     store.set('tab', b.dataset.t);
   });
@@ -364,6 +364,49 @@
     updateRecInfo();
   }, 1000);
 
+  // ---------------- 查看：在线报文 / 离线数据 ----------------
+  // 离线数据 = 通用版（GNL）的数据分析页（viewer/），嵌在 iframe 里；DBC、诊断问卷自己加载
+  let viewerReady = false, viewerQueue = null;
+  window.addEventListener('message', e => {
+    if (e.origin !== location.origin || !e.data || e.data.type !== 'canlink-viewer-ready') return;
+    viewerReady = true;
+    if (viewerQueue) { postToViewer(viewerQueue); viewerQueue = null; }
+  });
+  function postToViewer(file) {
+    file.arrayBuffer().then(buf => $('viewerFrame').contentWindow.postMessage({ type: 'canlink-open', name: file.name, buf }, location.origin, [buf]));
+  }
+  function fitViewer() {
+    const f = $('viewerFrame'), top = f.getBoundingClientRect().top;
+    f.style.height = Math.max(400, window.innerHeight - Math.max(top, 0) - 12) + 'px';
+  }
+  window.addEventListener('resize', () => { if (!$('offlineBox').hidden) fitViewer(); });
+
+  // 进离线数据前通道要关：报文还在进来时分析的数据不完整，也避免手机同时干两件重活
+  async function needClosed() {
+    if (!S.open) return true;
+    if (!confirm('要先关闭通道才能查看离线数据。现在关闭通道吗？' + (S.recording ? '\n（录制会停止，录好的数据还在。）' : ''))) return false;
+    await closeChannel();
+    if (S.recording) stopRec();
+    return true;
+  }
+  async function setTraceMode(mode, file) {
+    if (mode === 'offline' && !await needClosed()) { setSeg('tmode', S.tmode || 'online'); return false; }
+    S.tmode = mode;
+    setSeg('tmode', mode);
+    $('onlineBox').hidden = mode !== 'online';
+    $('offlineBox').hidden = mode !== 'offline';
+    $('tmodeHint').textContent = mode === 'offline' ? '打开 blf / asc 文件，或在“录制”页点“查看”。DBC、诊断问卷在下面加载。' : '';
+    if (mode === 'offline') {
+      const f = $('viewerFrame');
+      if (!f.src) { viewerReady = false; f.src = 'viewer/'; }
+      requestAnimationFrame(fitViewer);
+      if (file) { if (viewerReady) postToViewer(file); else viewerQueue = file; }
+    } else renderTrace(true);
+    return true;
+  }
+  seg('tmode', v => setTraceMode(v));
+  S.tmode = 'online';
+
   // ---------------- 报文显示 ----------------
   seg('view', v => { S.view = v; renderTrace(true); });
   $('btnPause').onclick = () => { S.paused = !S.paused; $('btnPause').textContent = S.paused ? '继续' : '暂停'; };
@@ -391,7 +434,7 @@
 
   let lastRender = 0;
   function renderTrace(force) {
-    if (!$('trace').classList.contains('on')) return;
+    if (!$('trace').classList.contains('on') || S.tmode !== 'online') return;
     const now = performance.now();
     if (!force && (S.paused || now - lastRender < 250)) return;
     lastRender = now;
@@ -564,7 +607,7 @@
     S.saved = false;
     $('btnRec').textContent = '停止录制'; $('btnRec').classList.add('r'); $('btnRec').classList.remove('p');
     $('btnMark').disabled = false; $('chipRec').hidden = false;
-    $('btnSave').disabled = true; $('btnShare').disabled = true;
+    $('btnSave').disabled = true; $('btnShare').disabled = true; $('btnView').disabled = true;
     log('开始录制');
   }
   function stopRec() {
@@ -573,6 +616,7 @@
     $('btnRec').textContent = '开始录制'; $('btnRec').classList.remove('r'); $('btnRec').classList.add('p');
     $('btnMark').disabled = true; $('chipRec').hidden = true;
     $('btnSave').disabled = !S.rec || !S.rec.count; $('btnShare').disabled = !S.rec || !S.rec.count || !navigator.share;
+    $('btnView').disabled = !S.rec || !S.rec.count;
     updateMarks();
     if (S.rec) log(`录制停止：${S.rec.count} 帧`);
   }
@@ -590,6 +634,8 @@
     const dur = S.recording ? Math.max(0, S.lastT - S.recT0) : S.rec.t1Last();
     $('rDur').textContent = fmtDur(dur);
     $('rCnt').textContent = S.rec.count.toLocaleString();
+    const has = S.rec.count > 0;
+    $('btnSave').disabled = !has; $('btnView').disabled = !has; $('btnShare').disabled = !has || !navigator.share;
     $('rMarks').textContent = S.rec.marks.length ? S.rec.marks.map(m => m.t.toFixed(1) + 's').join('，') : '无';
   }
   function updateMarks() {
@@ -630,6 +676,15 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     S.saved = true;
     log(`已保存 ${f.name}（${(f.size / 1048576).toFixed(1)} MB）`);
+  };
+  $('btnView').onclick = async () => {
+    if (!S.rec || !S.rec.count) return;
+    if (!await needClosed()) return;
+    if (S.recording) stopRec();
+    const f = await makeFile();
+    document.querySelector('#tabs button[data-t=trace]').click();
+    await setTraceMode('offline', f);
+    log(`在离线数据里打开 ${f.name}`);
   };
   $('btnShare').onclick = async () => {
     try {

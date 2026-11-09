@@ -1,8 +1,10 @@
 // 离线缓存：第一次打开时把网页文件存到本机；以后先尝试联网取新版本（3 秒没回应就用本机的），
 // 联不上网、GitHub 打不开时也能打开。改了网页文件后把 VERSION 加 1。
-const VERSION = 'canlink-2';
+const VERSION = 'canlink-3';
 const FILES = ['./', 'index.html', 'app.js', 'slcan.js', 'recorder.js', 'transport.js', 'demo.js', 'dfu.js',
-  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'fw/vdlink-1.0.bin'];
+  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'fw/vdlink-1.0.bin',
+  'viewer/', 'viewer/index.html', 'viewer/canlog.js', 'viewer/plot.js', 'viewer/ai.js', 'viewer/uds.js', 'viewer/dbc.js', 'viewer/qn.js',
+  'viewer/lib/xlsx.full.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
