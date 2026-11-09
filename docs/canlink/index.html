@@ -74,6 +74,12 @@
   .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
   #log, #fLog { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
+  #gate { position: fixed; inset: 0; z-index: 100; background: linear-gradient(135deg, var(--blue-d), var(--blue)); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #gate .gatebox { background: var(--card); border-radius: 14px; padding: 24px 22px; width: 100%; max-width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,.25); text-align: center; }
+  #gate h2 { margin: 0 0 4px; color: var(--blue-d); }
+  #gate p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  #gate input { width: 100%; text-align: center; font-size: 18px; letter-spacing: 2px; margin-bottom: 12px; }
+  #gate button { width: 100%; padding: 11px; }
   .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
   .fbtn { display: inline-block; padding: 9px 16px; border-radius: 8px; border: 1.5px solid var(--blue); background: var(--blue); color: #fff; cursor: pointer; white-space: nowrap; font-weight: 600; }
   .fbtn:active { opacity: .85; }
@@ -91,6 +97,15 @@
 </style>
 </head>
 <body>
+<div id="gate">
+  <div class="gatebox">
+    <h2>CAN 工具</h2>
+    <p>输入密码解锁</p>
+    <input type="password" inputmode="numeric" id="gatePin" class="mono" placeholder="密码" autocomplete="off">
+    <button class="b p" id="gateBtn">解锁</button>
+    <div class="hint" id="gateErr" style="margin-top:10px"></div>
+  </div>
+</div>
 <header>
   <h1>CAN 工具</h1>
   <span class="chip" id="chipDev">未连接</span>
@@ -218,21 +233,15 @@
       <button class="b" id="btnTp">保持在线：关</button>
     </div>
     <div class="row" style="border-top:1px dashed var(--line);padding-top:10px">
-      <div class="fld">安全等级<input type="number" id="secLevel" value="1" min="1" style="width:70px"></div>
       <button class="b p" id="btnSec">安全访问解锁</button>
-      <button class="b" id="btnSecEdit">算法插件…</button>
-    </div>
-    <div id="secBox" hidden style="margin-top:8px">
-      <div class="hint">粘贴你的安全算法（一段 JS）。可用变量：<code>seed</code>（字节数组）、<code>level</code>（等级）、<code>req</code>（请求字节）；返回 key（字节数组或十六进制字符串）。在你自己的设备上运行，<b>不会上传、不进仓库</b>。</div>
-      <textarea id="secCode" class="mono" rows="5" style="width:100%;margin-top:6px;border:1.5px solid var(--line);border-radius:8px;padding:8px" placeholder="// 例：\nconst s=(seed[0]<<24|seed[1]<<16|seed[2]<<8|seed[3])>>>0;\nconst k=(s ^ 0x12345678)>>>0;\nreturn [k>>>24,k>>16&255,k>>8&255,k&255];"></textarea>
-      <div class="row" style="margin-top:6px"><button class="b p" id="secSave">保存</button><button class="b r" id="secClear">清除</button><span class="hint" id="secSt"></span></div>
+      <span class="hint" id="secSt"></span>
     </div>
   </div>
 
   <div class="card">
     <h2>故障码</h2>
-    <div class="row">
-      <div class="fld">读取子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:100px"></div>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <div class="fld" style="flex:0 0 auto">子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:84px"></div>
       <button class="b p" id="btnReadDtc">读故障码</button>
       <button class="b r" id="btnClrDtc">清故障码</button>
     </div>
@@ -241,18 +250,22 @@
   </div>
 
   <div class="card">
-    <h2>读写数据（DID） / 例程控制（31）</h2>
-    <div class="row" style="align-items:flex-end">
-      <div class="fld">DID<input type="text" class="mono" id="didId" placeholder="如 FD54" style="width:100px"></div>
+    <h2>读 / 写数据（DID）</h2>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didId" placeholder="如 FD54" style="width:84px"></div>
       <button class="b p" id="btnReadDid">读</button>
-      <div class="fld" style="flex:1;min-width:120px">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01"></div>
+      <div class="fld" style="flex:1 1 auto;min-width:0">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01" style="width:100%"></div>
       <button class="b r" id="btnWriteDid">写</button>
     </div>
-    <div class="row" style="align-items:flex-end">
-      <div class="fld">例程类型
+  </div>
+
+  <div class="card">
+    <h2>例程控制（31）</h2>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <div class="fld" style="flex:0 0 auto">类型
         <select id="rtnType"><option value="01">启动</option><option value="02">停止</option><option value="03">读结果</option></select></div>
-      <div class="fld">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:100px"></div>
-      <div class="fld" style="flex:1;min-width:110px">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填"></div>
+      <div class="fld" style="flex:0 0 auto">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:84px"></div>
+      <div class="fld" style="flex:1 1 auto;min-width:0">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填" style="width:100%"></div>
       <button class="b p" id="btnRtn">执行</button>
     </div>
   </div>
@@ -296,18 +309,8 @@
 <section id="flash">
   <div class="card">
     <h2>刷写</h2>
-    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）和<b>安全算法插件</b>都在“诊断”页选 / 加载。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX / bin。</p>
+    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）在“诊断”页选。安全算法、指纹诊断仪编号已随开屏密码解锁内置好，不用再填。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX。</p>
     <div class="hint" id="fCtrl"></div>
-  </div>
-
-  <div class="card">
-    <h2>内置配置</h2>
-    <p class="hint">控制器、安全算法、诊断仪编号、刷写流程已加密内置在网页里（仓库是公开的，内容加密存放）。输入网页密码解锁载入，不用手填；载入后会覆盖下面各项和“诊断”页的当前控制器 / 安全算法。</p>
-    <div class="row">
-      <input type="password" inputmode="numeric" id="fPin" placeholder="网页密码" class="mono" style="max-width:180px">
-      <button class="b p" id="fUnlock">解锁载入</button>
-      <span class="hint" id="fUnlockSt"></span>
-    </div>
   </div>
 
   <div class="card">
@@ -323,13 +326,6 @@
       <span><b>App</b> <span class="hint" id="fAppName">（应用程序）</span></span>
     </div>
     <div class="hint" id="fInfo" style="margin-top:8px">支持 S19 / HEX。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
-  </div>
-
-  <div class="card">
-    <h2>指纹诊断仪编号</h2>
-    <label class="fld">写指纹（2E F1 84）时跟在日期后面的编号，十六进制，由你填，不进仓库
-      <input type="text" class="mono" id="fTester" placeholder="如 01 02 03 04" style="max-width:240px">
-    </label>
   </div>
 
   <details class="card">

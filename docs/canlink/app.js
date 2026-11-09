@@ -52,7 +52,7 @@
     if (v !== null) { if (el.type === 'checkbox') el.checked = v; else el.value = v; }
     el.addEventListener('change', () => { store.set('cfg.' + id, el.type === 'checkbox' ? el.checked : el.value); updateTiming(); reopenIfOpen(); });
   }
-  S.silent = store.get('cfg.silent', true);
+  S.silent = store.get('cfg.silent', false);   // 默认正常收发
   setSeg('mode', S.silent ? 1 : 0);
   seg('mode', v => { S.silent = v === '1'; store.set('cfg.silent', S.silent); updateSendHint(); reopenIfOpen(); });
 
@@ -568,21 +568,17 @@
     $('btnTp').textContent = '保持在线：开（每 2 秒）'; $('btnTp').classList.add('p');
   };
 
-  // 安全访问
+  // 安全访问（算法随开屏密码内置载入，不在页面显示；等级固定 1）
   let secCode = store.get('secCode', '');
-  $('secCode').value = secCode;
-  $('secSt').textContent = secCode ? '已加载算法' : '未加载算法';
-  $('btnSecEdit').onclick = () => { $('secBox').hidden = !$('secBox').hidden; };
-  $('secSave').onclick = () => { secCode = $('secCode').value; store.set('secCode', secCode); $('secSt').textContent = secCode ? '已保存' : '已清空'; };
-  $('secClear').onclick = () => { secCode = ''; $('secCode').value = ''; store.set('secCode', ''); $('secSt').textContent = '已清空'; };
+  const refreshSecSt = () => { $('secSt').textContent = secCode ? '内置算法已载入' : '未载入（请先在开屏输入密码解锁）'; };
+  refreshSecSt();
   $('btnSec').onclick = async () => {
-    const lvl = Math.max(1, +$('secLevel').value || 1);
-    const reqSub = 2 * lvl - 1, keySub = 2 * lvl;
+    const lvl = 1, reqSub = 1, keySub = 2;
     const seedR = await udsReq([0x27, reqSub]);
     if (!seedR.data || seedR.data[0] !== 0x67) return;
     const seed = seedR.data.slice(2);
     if (seed.every(b => b === 0)) { $('diagOut').innerHTML += '<div class="good">种子全 0，可能已经解锁。</div>'; return; }
-    if (!secCode) { $('diagOut').innerHTML += '<div class="warn">拿到种子了，但还没加载安全算法。点“算法插件…”把算法贴进去。种子：' + hexs(seed) + '</div>'; return; }
+    if (!secCode) { $('diagOut').innerHTML += '<div class="warn">还没载入安全算法，请先在开屏输入密码解锁。种子：' + hexs(seed) + '</div>'; return; }
     let key;
     try { key = Diag.runKeyPlugin(secCode, seed, lvl, seedR.data); }
     catch (e) { $('diagOut').innerHTML += '<div class="bad">算法出错：' + esc(e.message) + '</div>'; return; }
@@ -677,12 +673,10 @@
   // 复用诊断页的当前控制器 curCfg() 和安全算法插件 secCode；文件解析用 FlashFile，流程引擎用 Flash。
   const flashFiles = { driver: null, app: null };   // 解析后的 { type, segs }
   let flashing = false, flashStop = false;
+  let flashTester = store.get('flashTester', '');    // 指纹诊断仪编号（内置，不在页面显示）
 
-  $('fTester').value = store.get('flashTester', '');
-  $('fTester').addEventListener('change', () => store.set('flashTester', $('fTester').value));
-
-  // 内置配置：控制器 / 安全算法 / 诊断仪编号 / 刷写流程加密放在 secrets.enc.json，用网页密码解锁载入。
-  // 加密方案同 SEF 主站（PBKDF2-SHA256 + AES-256-GCM），密码不进仓库。
+  // 开屏密码解锁内置配置：控制器 / 安全算法 / 诊断仪编号 / 刷写流程加密放在 secrets.enc.json。
+  // 加密方案同 SEF 主站（PBKDF2-SHA256 + AES-256-GCM），密码不进仓库；解锁后自动载入，页面不显示这些内容。
   const b64u = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
   async function unlockSecrets(pin) {
     const enc = await (await fetch('secrets.enc.json', { cache: 'no-cache' })).json();
@@ -693,8 +687,8 @@
     return JSON.parse(new TextDecoder().decode(pt));
   }
   function applySecrets(sec) {
-    if (sec.secCode) { secCode = sec.secCode; store.set('secCode', secCode); $('secCode').value = secCode; $('secSt').textContent = '已载入内置算法'; }
-    if (sec.tester) { $('fTester').value = sec.tester; store.set('flashTester', sec.tester); }
+    if (sec.secCode) { secCode = sec.secCode; store.set('secCode', secCode); refreshSecSt(); }
+    if (sec.tester) { flashTester = sec.tester; store.set('flashTester', sec.tester); }
     if (sec.flow) { $('fFlow').value = JSON.stringify(sec.flow, null, 1); store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = '已载入内置流程'; }
     if (sec.ctrl) {
       let idx = ctrls.findIndex(c => c.name === sec.ctrl.name);
@@ -703,18 +697,6 @@
     }
     flashCtrlHint();
   }
-  $('fUnlock').onclick = async () => {
-    const pin = $('fPin').value.trim();
-    if (!pin) { $('fUnlockSt').textContent = '先输入网页密码'; return; }
-    $('fUnlockSt').textContent = '解锁中…'; $('fUnlock').disabled = true;
-    let sec;
-    try { sec = await unlockSecrets(pin); }
-    catch (e) { $('fUnlockSt').innerHTML = '<span class="bad">密码错误或解锁失败</span>'; $('fUnlock').disabled = false; return; }
-    applySecrets(sec);
-    $('fPin').value = ''; $('fUnlock').disabled = false;
-    $('fUnlockSt').innerHTML = '<span class="good">已载入：安全算法、诊断仪编号、刷写流程' + (sec.ctrl ? '、控制器 ' + esc(sec.ctrl.name || '') : '') + '</span>';
-  };
-  $('fPin').addEventListener('keydown', e => { if (e.key === 'Enter') $('fUnlock').click(); });
 
   function flowDefault() { return JSON.stringify(Flash.DEFAULT_FLOW, null, 1); }
   $('fFlow').value = store.get('flashFlow', '') || flowDefault();
@@ -763,7 +745,7 @@
 
   function flashCtrlHint() {
     const c = ctrls[curCtrl] || {};
-    $('fCtrl').innerHTML = `当前控制器：<b>${esc(c.name || '控制器')}</b>　请求 ${esc(c.req || '?')} / 响应 ${esc(c.resp || '?')} / 功能 ${esc(c.func || '?')}　${c.fd ? 'CAN FD' : '经典 CAN'}　安全算法：${secCode ? '已加载' : '<span class="warn">未加载</span>'}（都在“诊断”页改）`;
+    $('fCtrl').innerHTML = `当前控制器：<b>${esc(c.name || '控制器')}</b>　请求 ${esc(c.req || '?')} / 响应 ${esc(c.resp || '?')} / 功能 ${esc(c.func || '?')}　${c.fd ? 'CAN FD' : '经典 CAN'}　安全算法：${secCode ? '已载入' : '<span class="warn">未载入</span>'}（控制器在“诊断”页选）`;
   }
 
   function flog(msg, cls) {
@@ -784,6 +766,33 @@
 
   renderFileInfo(); flashCtrlHint();
 
+  // ---------------- 开屏密码锁 ----------------
+  // 打开网页先解锁：输对密码才进，内置配置（控制器 / 安全算法 / 诊断仪编号 / 刷写流程）随之自动载入。
+  // 密码记在本机，下次打开自动解锁；密码不进仓库。
+  async function gateUnlock(pin, silent) {
+    let sec;
+    try { sec = await unlockSecrets(pin); }
+    catch (e) { if (!silent) $('gateErr').innerHTML = '<span class="bad">密码错误，请重试</span>'; return false; }
+    applySecrets(sec);
+    store.set('pin', pin);
+    $('gate').hidden = true;
+    return true;
+  }
+  $('gateBtn').onclick = async () => {
+    const pin = $('gatePin').value.trim();
+    if (!pin) { $('gateErr').textContent = '请输入密码'; return; }
+    $('gateErr').textContent = '解锁中…'; $('gateBtn').disabled = true;
+    const ok = await gateUnlock(pin, false);
+    $('gateBtn').disabled = false;
+    if (!ok) { $('gatePin').value = ''; $('gatePin').focus(); }
+  };
+  $('gatePin').addEventListener('keydown', e => { if (e.key === 'Enter') $('gateBtn').click(); });
+  (async () => {   // 本机记住的密码：自动解锁
+    const saved = store.get('pin', '');
+    if (saved && await gateUnlock(saved, true)) return;
+    $('gatePin').focus();
+  })();
+
   $('fStop').onclick = () => { flashStop = true; $('fStop').textContent = '正在停止…'; };
   $('fStart').onclick = async () => {
     if (flashing) return;
@@ -794,8 +803,8 @@
     if (!flashFiles.driver && !flashFiles.app) { alert('先选 Driver 或 App 文件'); return; }
     const needFp = flow.steps.some(s => s.op === 'fingerprint');
     let tester = [];
-    try { tester = Flash.parseHex($('fTester').value); } catch (e) { /* ignore，下面判断 */ }
-    if (needFp && !tester.length) { if (!confirm('没填指纹诊断仪编号，将用全 0 写指纹，继续？')) return; }
+    try { tester = Flash.parseHex(flashTester); } catch (e) { /* ignore，下面判断 */ }
+    if (needFp && !tester.length) { if (!confirm('没载入指纹诊断仪编号（请先在开屏输入密码解锁），将用全 0 写指纹，继续？')) return; }
     if (!confirm('确认开始刷写？\n请先确认电压 / 充电宝接好、手机不锁屏，中途别拔线。')) return;
 
     flashing = true; flashStop = false;

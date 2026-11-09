@@ -53,7 +53,7 @@ SEF 网页按项目代号显示车型；用户在 SEF 里说项目代号。诊�
 改了 `tools/template.html` 或 `tools/web/*.js` 后，需要网站密码（6 位）重新生成 `docs/`：`python tools/build.py --pin 网站密码`。
 
 ## CAN 工具（canlink，issue #11）
-手机 / 电脑用的 CAN FD 工具（看报文、录报文、发报文；后面加诊断、刷写），硬件 MKS CANable 2.0。网页在 `docs/canlink/`（直接发布，不经 build.py；网页本体不加密、不放明文保密内容。例外：刷写的控制器 / 安全算法 / 诊断仪编号 / 刷写流程用网页密码加密放在 `docs/canlink/secrets.enc.json`，方案同主站 PBKDF2+AES-GCM，密文入库、密码不入库，网页里“解锁载入”），固件在 `canlink/firmware/`（GPLv3），说明和自测见 `canlink/README.md`。改了网页跑 `node canlink/test/test_web.js`、`test_dfu.js`、`test_diag.js`、`test_flashfile.js` 和 `test_flash.js`。网页有离线缓存（`docs/canlink/sw.js`），改了 `docs/canlink/` 里的文件要把 sw.js 的 `VERSION` 加 1，新加的文件也要加进它的 `FILES`。“查看 → 离线数据”是 `docs/canlink/viewer/`，从 VehDiag_gnl 复制（存储键改成 `clv_`、加了嵌入和接收录制的代码，见文件里的注释）；GNL / SEF 的 canlog、plot、ai、uds、dbc、qn.js 改了要同步过来。
+手机 / 电脑用的 CAN FD 工具（看报文、录报文、发报文；后面加诊断、刷写），硬件 MKS CANable 2.0。网页在 `docs/canlink/`（直接发布，不经 build.py；网页本体不加密、不放明文保密内容。例外：刷写的控制器 / 安全算法 / 诊断仪编号 / 刷写流程用网页密码加密放在 `docs/canlink/secrets.enc.json`，方案同主站 PBKDF2+AES-GCM，密文入库、密码不入库；打开网页先输密码（整页锁、本机记住）自动载入，页面不显示这些内容），固件在 `canlink/firmware/`（GPLv3），说明和自测见 `canlink/README.md`。改了网页跑 `node canlink/test/test_web.js`、`test_dfu.js`、`test_diag.js`、`test_flashfile.js` 和 `test_flash.js`。网页有离线缓存（`docs/canlink/sw.js`），改了 `docs/canlink/` 里的文件要把 sw.js 的 `VERSION` 加 1，新加的文件也要加进它的 `FILES`。“查看 → 离线数据”是 `docs/canlink/viewer/`，从 VehDiag_gnl 复制（存储键改成 `clv_`、加了嵌入和接收录制的代码，见文件里的注释）；GNL / SEF 的 canlog、plot、ai、uds、dbc、qn.js 改了要同步过来。
 
 ## 推送
 用户已同意：VehDiag_sef、VehDiag_pub、VehDiag_shr、VehDiag_gnl 四个仓库的改动都可以直接推送到 `main`（推送前先在本地测试），不必走 PR / 等 Muse 合并。
