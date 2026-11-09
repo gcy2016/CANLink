@@ -13,12 +13,18 @@
     --mono: ui-monospace, Menlo, Consolas, "Roboto Mono", monospace;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; background: var(--bg); color: var(--text);
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
   header { background: linear-gradient(135deg, var(--blue-d), var(--blue)); color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   header h1 { margin: 0; font-size: 18px; font-weight: 600; }
   .chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.18); white-space: nowrap; }
   .chip.on { background: #3fa86b; } .chip.err { background: #d0533f; }
+  #chipRec { background: #d0533f; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fff; margin-right: 5px; vertical-align: 1px; animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  details > summary { cursor: pointer; font-weight: 600; color: var(--blue-d); }
+  details.card > summary { font-size: 16px; }
   #stat { margin-left: auto; font-size: 12px; opacity: .92; font-family: var(--mono); }
   nav { display: flex; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; overflow-x: auto; }
   nav button { flex: 1; min-width: 64px; border: 0; background: none; padding: 11px 6px; font-size: 15px; color: var(--muted); border-bottom: 3px solid transparent; cursor: pointer; }
@@ -57,9 +63,9 @@
   .ch { background: var(--hl); border-radius: 2px; }
   .tbl { max-height: 65vh; overflow: auto; }
   .r { text-align: right; }
-  .sendrow { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 10px; }
-  .sendrow:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
-  .sendrow .full { grid-column: 1 / -1; }
+  .sendrow { display: grid; grid-template-columns: 150px 1fr auto; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
+  .sendrow:first-child { border-top: 0; }
+  .sendrow .btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
   #log { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
@@ -70,6 +76,7 @@
     .hide-s { display: none; }
     table { font-size: 12px; }
     .sendrow { grid-template-columns: 1fr; }
+    nav button { font-size: 14px; min-width: 56px; }
   }
 </style>
 </head>
@@ -78,30 +85,116 @@
   <h1>CAN 工具</h1>
   <span class="chip" id="chipDev">未连接</span>
   <span class="chip" id="chipBus">通道关闭</span>
-  <span class="chip" id="chipRec" hidden>● 录制中</span>
+  <span class="chip" id="chipRec" hidden><i class="dot"></i>录制中</span>
   <span id="stat"></span>
 </header>
 <nav id="tabs">
-  <button data-t="conn" class="on">连接</button>
-  <button data-t="trace">报文</button>
-  <button data-t="send">发送</button>
-  <button data-t="rec">录制</button>
-  <button data-t="fw">固件</button>
+  <button data-t="rec" class="on">录制</button>
+  <button data-t="trace">查看</button>
+  <button data-t="send">诊断</button>
+  <button data-t="flash">刷写</button>
+  <button data-t="cfg">设置</button>
 </nav>
 <main>
 
-<section id="conn" class="on">
+<section id="rec" class="on">
   <div class="card">
-    <h2>设备</h2>
     <div class="row">
-      <button class="b p" id="btnConnect">连接 USB 设备</button>
-      <button class="b" id="btnDemo">演示模式</button>
-      <button class="b r" id="btnDisconnect" disabled>断开</button>
+      <button class="b p" id="btnConn">连接设备</button>
+      <button class="b" id="btnChan" disabled>打开通道</button>
+      <button class="b" id="btnRec">开始录制</button>
+      <button class="b" id="btnMark" disabled>打标记</button>
     </div>
-    <div class="row hint" id="devInfo">用 Chrome 或 Edge 打开。安卓手机用 USB-C 数据线（OTG）直连 CANable；电脑直接插 USB。</div>
-    <div class="row hint" id="noApi" hidden><span class="bad">这个浏览器不支持网页访问 USB，请用安卓或电脑上的 Chrome / Edge。iPhone 暂不支持。</span></div>
+    <div class="hint" id="devInfo">用 USB 数据线连上 CANable 后点“连接设备”。</div>
+    <div class="hint" id="noApi" hidden></div>
+    <div class="kv" style="margin-top:10px">
+      <div><b>时长</b><span id="rDur">—</span></div>
+      <div><b>帧数</b><span id="rCnt">—</span></div>
+      <div><b>标记</b><span id="rMarks">—</span></div>
+    </div>
+    <div class="hint" style="margin-top:8px">录制在这台手机 / 电脑的浏览器里，关掉网页就没了，录完记得保存。</div>
   </div>
 
+  <details class="card" id="busBox">
+    <summary>总线状态</summary>
+    <div class="kv" style="margin-top:10px">
+      <div><b>总线</b><span id="sBus">—</span></div>
+      <div><b>帧率</b><span id="sFps">—</span></div>
+      <div><b>负载率（估算）</b><span id="sLoad">—</span></div>
+      <div><b>错误计数 发/收</b><span id="sErr">—</span></div>
+      <div><b>丢帧</b><span id="sDrop">—</span></div>
+      <div><b>板子时钟误差</b><span id="sClk">—</span></div>
+    </div>
+    <div id="log"></div>
+  </details>
+
+  <div class="card">
+    <h2>保存 ASC</h2>
+    <div class="row">
+      <div class="fld">范围
+        <select id="range"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select></div>
+      <div class="fld" id="fMarks" hidden>从 / 到
+        <span style="display:flex;gap:6px"><select id="mFrom"></select><select id="mTo"></select></span></div>
+      <div class="fld" id="fLast" hidden>最后多少秒<input type="number" id="lastSec" value="60" min="1" style="width:100px"></div>
+      <div class="fld" id="fCustom" hidden>从 / 到（秒）
+        <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
+    </div>
+    <div class="row">
+      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:160px">
+      <button class="b p" id="btnSave" disabled>下载</button>
+      <button class="b" id="btnShare" disabled>分享</button>
+    </div>
+    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）。</div>
+  </div>
+</section>
+
+<section id="trace">
+  <div class="card">
+    <div class="row">
+      <div class="seg" id="view"><button data-v="fixed" class="on">按 ID</button><button data-v="scroll">滚动</button></div>
+      <button class="b" id="btnPause">暂停</button>
+      <button class="b" id="btnClear">清空</button>
+      <input type="text" id="filter" class="mono" placeholder="过滤 ID，如 7E0,7E8 或 700-7FF" style="flex:1;min-width:180px">
+    </div>
+    <div class="hint" id="traceInfo"></div>
+  </div>
+  <div class="card tbl" id="traceBox"></div>
+</section>
+
+<section id="send">
+  <div class="card">
+    <h2>发送</h2>
+    <div class="hint" id="sendHint"></div>
+    <div class="row" style="margin-top:8px">
+      <div class="fld">发送 ID<input type="text" class="mono" id="sId" style="width:120px"></div>
+      <div class="fld">看回复 ID<input type="text" class="mono" id="sResp" placeholder="自动" style="width:120px"></div>
+      <div class="fld">循环周期 ms<input type="number" id="sCyc" min="1" style="width:100px"></div>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="sExt"> 扩展帧</label>
+      <label><input type="checkbox" id="sFd"> CAN FD</label>
+      <label><input type="checkbox" id="sBrs"> BRS</label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>常用指令 <span class="hint" style="font-weight:400">（自动保存在本机，可在“设置”里导出备份）</span></h2>
+    <div id="sendRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 加一条</button></div>
+  </div>
+  <div class="card">
+    <h2>最近收发 <span class="hint" style="font-weight:400" id="respInfo"></span></h2>
+    <div class="tbl" id="respBox" style="max-height:40vh"></div>
+  </div>
+</section>
+
+<section id="flash">
+  <div class="card">
+    <h2>刷写</h2>
+    <p class="hint">开发中（阶段 3）：通用刷写，刷写流程写成配置，不同专业的控制器换一份配置就能刷。见 issue #11。</p>
+  </div>
+</section>
+
+<section id="cfg">
   <div class="card">
     <h2>总线设置</h2>
     <div class="row">
@@ -126,104 +219,43 @@
     <div class="row">
       <div class="fld">模式
         <div class="seg" id="mode"><button data-v="1" class="on">只听</button><button data-v="0">正常收发</button></div></div>
-      <div class="hint" style="align-self:flex-end;max-width:520px">只听：不发任何报文、不回 ACK，不影响总线，录报文用这个。诊断、发报文要切到“正常收发”。</div>
+      <div class="hint" style="align-self:flex-end;max-width:520px">只听：不发任何报文、不回 ACK，不影响总线，录报文用这个。诊断、发报文要用“正常收发”。通道开着时改设置会自动重开通道。</div>
     </div>
     <div class="row hint" id="timingInfo"></div>
-    <div class="row">
-      <button class="b p" id="btnOpen" disabled>打开通道</button>
-      <button class="b" id="btnClose" disabled>关闭通道</button>
-    </div>
+    <div class="row"><label><input type="checkbox" id="recAuto" checked> 打开通道时自动开始录制</label></div>
   </div>
 
-  <div class="card">
-    <h2>状态</h2>
-    <div class="kv">
-      <div><b>总线</b><span id="sBus">—</span></div>
-      <div><b>帧率</b><span id="sFps">—</span></div>
-      <div><b>负载率（估算）</b><span id="sLoad">—</span></div>
-      <div><b>错误计数 发/收</b><span id="sErr">—</span></div>
-      <div><b>丢帧</b><span id="sDrop">—</span></div>
-      <div><b>板子时钟误差</b><span id="sClk">—</span></div>
-    </div>
-    <div id="log"></div>
-  </div>
-</section>
-
-<section id="trace">
-  <div class="card">
-    <div class="row">
-      <div class="seg" id="view"><button data-v="fixed" class="on">按 ID</button><button data-v="scroll">滚动</button></div>
-      <button class="b" id="btnPause">暂停</button>
-      <button class="b" id="btnClear">清空</button>
-      <input type="text" id="filter" class="mono" placeholder="过滤 ID，如 7E0,7E8 或 700-7FF" style="flex:1;min-width:180px">
-    </div>
-    <div class="hint" id="traceInfo"></div>
-  </div>
-  <div class="card tbl" id="traceBox"></div>
-</section>
-
-<section id="send">
-  <div class="card">
-    <h2>发送报文</h2>
-    <div class="hint" id="sendHint">要先把模式切到“正常收发”并打开通道。</div>
-    <div id="sendRows"></div>
-    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 再加一条</button></div>
-  </div>
-</section>
-
-<section id="rec">
-  <div class="card">
-    <h2>录制</h2>
-    <div class="row">
-      <button class="b p" id="btnRec">开始录制</button>
-      <button class="b" id="btnMark" disabled>打标记</button>
-      <label><input type="checkbox" id="recAuto" checked> 打开通道时自动开始</label>
-    </div>
-    <div class="kv">
-      <div><b>时长</b><span id="rDur">—</span></div>
-      <div><b>帧数</b><span id="rCnt">—</span></div>
-      <div><b>标记</b><span id="rMarks">—</span></div>
-    </div>
-    <div class="hint" style="margin-top:8px">录制在这台手机 / 电脑的浏览器里，关掉网页就没了，录完记得保存。手机录制时别锁屏、别切走太久。</div>
-  </div>
-  <div class="card">
-    <h2>保存 ASC</h2>
-    <div class="row">
-      <div class="fld">范围
-        <select id="range"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select></div>
-      <div class="fld" id="fMarks" hidden>从 / 到
-        <span style="display:flex;gap:6px"><select id="mFrom"></select><select id="mTo"></select></span></div>
-      <div class="fld" id="fLast" hidden>最后多少秒<input type="number" id="lastSec" value="60" min="1" style="width:100px"></div>
-      <div class="fld" id="fCustom" hidden>从 / 到（秒）
-        <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
-    </div>
-    <div class="row">
-      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:160px">
-      <button class="b p" id="btnSave" disabled>下载</button>
-      <button class="b" id="btnShare" disabled>分享</button>
-    </div>
-    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）。</div>
-  </div>
-</section>
-
-<section id="fw">
   <div class="card">
     <h2>固件</h2>
     <div class="row" id="fwNow">当前：未连接</div>
-    <div class="hint">本工具配套的是 vdlink 固件（在 CANable 2.0 原版 slcan 固件上改的，开源）。原版固件也能用，但没有准确的时间戳、采样点不能调、只听模式不生效。</div>
+    <div class="hint">配套的是 vdlink 固件（在 CANable 2.0 原版 slcan 固件上改的，开源）。原版固件也能用，但时间戳不准、采样点不能调、只听模式不生效。</div>
+    <details style="margin-top:8px">
+      <summary>刷入 vdlink 固件</summary>
+      <ol>
+        <li>拔下 CANable，把 <b>BOOT</b> 两个针脚用跳线帽短接。</li>
+        <li>重新插上，这时它是“烧录模式”，不是 CAN 设备。</li>
+        <li>点下面的按钮，在弹窗里选 <b>STM32 BOOTLOADER</b>（或 DFU in FS Mode）。</li>
+        <li>等进度走完显示“完成”，拔下来、<b>取下跳线帽</b>，再插上就是新固件。</li>
+      </ol>
+      <div class="hint">电脑（Windows）上浏览器一般看不到烧录模式的设备（缺驱动），用安卓手机刷最省事；也可以用 ST 官方的 STM32CubeProgrammer 刷 <a href="fw/vdlink-1.0.bin">vdlink-1.0.bin</a>（地址 0x08000000）。</div>
+      <div class="row" style="margin-top:10px"><button class="b p" id="btnFlash">刷入 vdlink 1.0</button></div>
+      <div class="bar"><i id="fwBar"></i></div>
+      <div class="hint" id="fwMsg"></div>
+    </details>
   </div>
+
   <div class="card">
-    <h2>刷入 vdlink 固件</h2>
-    <ol>
-      <li>拔下 CANable，把 <b>BOOT</b> 两个针脚用跳线帽短接。</li>
-      <li>重新插上（安卓手机用 OTG 线，电脑直接插），这时它是“烧录模式”，不是 CAN 设备。</li>
-      <li>点下面的按钮，在弹窗里选 <b>STM32 BOOTLOADER</b>（或 DFU in FS Mode）。</li>
-      <li>等进度走完显示“完成”，拔下来、<b>取下跳线帽</b>，再插上就是新固件。</li>
-    </ol>
-    <div class="hint">电脑（Windows）上浏览器可能看不到烧录模式的设备（缺驱动），用安卓手机刷最省事；也可以用 ST 官方的 STM32CubeProgrammer 刷 <a href="fw/vdlink-1.0.bin">vdlink-1.0.bin</a>（地址 0x08000000）。</div>
-    <div class="row" style="margin-top:10px"><button class="b p" id="btnFlash">刷入 vdlink 1.0</button></div>
-    <div class="bar"><i id="fwBar"></i></div>
-    <div class="hint" id="fwMsg"></div>
+    <h2>其他</h2>
+    <div class="row">
+      <button class="b" id="btnDemo">演示模式</button>
+      <span class="hint">不接硬件，用编出来的报文看看界面。</span>
+    </div>
+    <div class="row">
+      <button class="b" id="btnExport">导出设置和常用指令</button>
+      <button class="b" id="btnImport">导入</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+    <div class="hint">设置和常用指令存在浏览器里，清理浏览器数据会丢，建议导出一份备份。</div>
   </div>
 </section>
 

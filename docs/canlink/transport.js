@@ -11,8 +11,8 @@ const Transport = (() => {
   class SerialTransport {
     static available() { return typeof navigator !== 'undefined' && !!navigator.serial; }
     constructor() { this.kind = 'serial'; this.onData = null; this.onClose = null; }
-    async open() {
-      this.port = await navigator.serial.requestPort({ filters: FILTERS.map(f => ({ usbVendorId: f.vendorId, usbProductId: f.productId })) });
+    async open(port) {
+      this.port = port || await navigator.serial.requestPort({ filters: FILTERS.map(f => ({ usbVendorId: f.vendorId, usbProductId: f.productId })) });
       await this.port.open({ baudRate: 115200, bufferSize: 65536 });
       this.writer = this.port.writable.getWriter();
       this.reading = this.readLoop();
@@ -102,10 +102,25 @@ const Transport = (() => {
     }
   }
 
+  // 安卓 APK 里的原生 USB 桥（以后做 APK 用）：APK 用 Java 实现 USB 串口，注入 window.VdlinkNative：
+  //   open() → 设备名（失败抛异常），write(text)，close()
+  // 收到数据、断开时调用 window.__vdlinkNative.onData(text) / onClose()
+  class NativeTransport {
+    static available() { return typeof window !== 'undefined' && !!window.VdlinkNative; }
+    constructor() { this.kind = 'native'; this.onData = null; this.onClose = null; }
+    async open() {
+      window.__vdlinkNative = { onData: t => this.onData && this.onData(t), onClose: () => this.onClose && !this.closing && this.onClose() };
+      this.name = window.VdlinkNative.open() || 'USB 设备';
+    }
+    async write(text) { window.VdlinkNative.write(text); }
+    async close() { this.closing = true; try { window.VdlinkNative.close(); } catch (e) { /* ignore */ } }
+  }
+
   const isAndroid = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
   // 选一个合适的方式：安卓优先 WebUSB，电脑优先 Web Serial
   function pick() {
+    if (NativeTransport.available()) return new NativeTransport();
     if (isAndroid()) {
       if (UsbTransport.available()) return new UsbTransport();
       if (SerialTransport.available()) return new SerialTransport();
@@ -116,6 +131,23 @@ const Transport = (() => {
     return null;
   }
 
-  return { SerialTransport, UsbTransport, pick, isAndroid, FILTERS };
+  // 已经授权过的设备（不弹窗）：返回 { transport, handle } 或 null
+  async function known() {
+    try {
+      const want = (vid, pid) => FILTERS.some(f => f.vendorId === vid && f.productId === pid);
+      if (isAndroid() || !SerialTransport.available()) {
+        if (UsbTransport.available()) {
+          const d = (await navigator.usb.getDevices()).find(x => want(x.vendorId, x.productId));
+          if (d) return { transport: new UsbTransport(), handle: d };
+        }
+      } else {
+        const p = (await navigator.serial.getPorts()).find(x => { const i = x.getInfo(); return want(i.usbVendorId, i.usbProductId); });
+        if (p) return { transport: new SerialTransport(), handle: p };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  return { SerialTransport, UsbTransport, NativeTransport, pick, known, isAndroid, FILTERS };
 })();
 if (typeof module !== 'undefined') module.exports = Transport;

@@ -11,8 +11,8 @@
   // ---------------- 状态 ----------------
   const S = {
     dev: null, fw: null, open: false, silent: true, nominal: 500000, data: 2000000, fdOn: true,
-    clock: new Slcan.Clock(), hostT0: 0, lastT: 0, ppm: 0, clockLocked: false,
-    ids: new Map(), scroll: [], paused: false, view: 'fixed', filter: null,
+    clock: new Slcan.Clock(), hostT0: 0, lastT: 0, tOffset: 0, ppm: 0, clockLocked: false,
+    ids: new Map(), scroll: [], recent: [], paused: false, view: 'fixed', filter: null,
     stats: { frames: 0, bits: 0, lastFrames: 0, lastBits: 0, lastTime: 0, fps: 0, load: 0 },
     rec: null, recording: false, recT0: 0, pending: null, statusTimer: null, wakeLock: null,
   };
@@ -32,6 +32,8 @@
     for (const x of $('tabs').children) x.classList.toggle('on', x === b);
     for (const s of document.querySelectorAll('main > section')) s.classList.toggle('on', s.id === b.dataset.t);
     if (b.dataset.t === 'trace') renderTrace(true);
+    if (b.dataset.t === 'send') renderResp(true);
+    store.set('tab', b.dataset.t);
   });
   function seg(id, cb) {
     $(id).addEventListener('click', e => {
@@ -47,11 +49,11 @@
   for (const id of cfgIds) {
     const el = $(id), v = store.get('cfg.' + id, null);
     if (v !== null) { if (el.type === 'checkbox') el.checked = v; else el.value = v; }
-    el.addEventListener('change', () => { store.set('cfg.' + id, el.type === 'checkbox' ? el.checked : el.value); updateTiming(); });
+    el.addEventListener('change', () => { store.set('cfg.' + id, el.type === 'checkbox' ? el.checked : el.value); updateTiming(); if (id !== 'recAuto') reopenIfOpen(); });
   }
   S.silent = store.get('cfg.silent', true);
   setSeg('mode', S.silent ? 1 : 0);
-  seg('mode', v => { S.silent = v === '1'; store.set('cfg.silent', S.silent); updateSendHint(); });
+  seg('mode', v => { S.silent = v === '1'; store.set('cfg.silent', S.silent); updateSendHint(); reopenIfOpen(); });
 
   function timings() {
     const clock = (S.fw && S.fw.clock) || 80e6;
@@ -101,20 +103,28 @@
   }
   const send = text => S.dev.write(text + '\r');
 
-  async function connect(demo) {
+  // 连接。demo：演示模式；known：已经授权过的设备 / 串口（自动连接用，不弹窗）
+  async function connect(demo, known) {
+    if (S.connecting) return;
     if (S.dev) await disconnect();
     let t;
     if (demo) t = new DemoTransport();
     else {
-      t = Transport.pick();
-      if (!t) { $('noApi').hidden = false; return; }
+      t = known ? known.transport : Transport.pick();
+      if (!t) { showNoApi(); return; }
     }
+    S.connecting = true;
+    const btn = $('btnConn');
+    btn.disabled = true;
+    if (!known && !demo) $('devInfo').innerHTML = '请在弹出的窗口里选 <b>CANable</b>。窗口里是空的说明没认到设备：点“取消”，检查数据线（要能传数据的线）和 OTG 是否打开，再试一次。';
     t.onData = text => reader.push(text);
     t.onClose = () => { log('设备断开了', 'bad'); cleanup(); };
     try {
-      await t.open();
+      await t.open(known && known.handle);
     } catch (e) {
-      if (e && e.name === 'NotFoundError') return; // 用户取消了选择
+      S.connecting = false; btn.disabled = false;
+      if (e && e.name === 'NotFoundError') { $('devInfo').textContent = '没有选设备。'; return; }
+      $('devInfo').innerHTML = `<span class="bad">连接失败：${esc(e.message || e)}</span>`;
       log('连接失败：' + (e.message || e), 'bad');
       return;
     }
@@ -130,12 +140,14 @@
       const v = await cmd('V', '*', 400);
       S.fw = { vdlink: false, version: v && v.line ? v.line.trim() : '原版 slcan', clock: 80e6 };
     }
+    S.connecting = false; btn.disabled = false;
     $('chipDev').textContent = t.name;
     $('chipDev').classList.add('on');
-    $('devInfo').innerHTML = `已连接：<b>${esc(t.name)}</b>，固件：${S.fw.vdlink ? 'vdlink ' + esc(S.fw.version) : '<span class="warn">' + esc(S.fw.version) + '（原版，建议到“固件”页刷 vdlink）</span>'}`;
-    $('fwNow').innerHTML = $('devInfo').innerHTML;
+    const fwText = S.fw.vdlink ? 'vdlink ' + esc(S.fw.version) : '<span class="warn">' + esc(S.fw.version) + '（原版，建议到“设置 → 固件”刷 vdlink）</span>';
+    $('devInfo').innerHTML = `已连接：<b>${esc(t.name)}</b>，固件：${fwText}`;
+    $('fwNow').innerHTML = `当前：${esc(t.name)}，${fwText}`;
     log(`已连接 ${t.name}，固件 ${S.fw.vdlink ? 'vdlink ' + S.fw.version : S.fw.version}`);
-    $('btnOpen').disabled = false; $('btnDisconnect').disabled = false;
+    updateButtons();
     updateTiming();
     if (S.fw.vdlink) pollStatus();
   }
@@ -152,37 +164,62 @@
   function cleanup() {
     stopCyclic();
     if (S.recording) stopRec();
-    S.dev = null; S.open = false; S.fw = null;
+    S.dev = null; S.open = false; S.fw = null; S.connecting = false;
     clearInterval(S.statusTimer); S.statusTimer = null;
     releaseWake();
     $('chipDev').textContent = '未连接'; $('chipDev').classList.remove('on');
     setBusChip();
-    $('btnOpen').disabled = true; $('btnClose').disabled = true; $('btnDisconnect').disabled = true;
-    $('devInfo').textContent = '未连接'; $('fwNow').textContent = '当前：未连接';
+    $('devInfo').textContent = '未连接。用 USB 数据线连上 CANable 后点“连接设备”。'; $('fwNow').textContent = '当前：未连接';
+    updateButtons();
     updateSendHint();
   }
 
-  $('btnConnect').onclick = () => connect(false);
-  $('btnDemo').onclick = () => connect(true);
-  $('btnDisconnect').onclick = () => disconnect();
-  if (!Transport.pick()) $('noApi').hidden = false;
+  function updateButtons() {
+    $('btnConn').textContent = S.dev ? '断开设备' : '连接设备';
+    $('btnConn').classList.toggle('p', !S.dev);
+    $('btnChan').disabled = !S.dev;
+    $('btnChan').textContent = S.open ? '关闭通道' : '打开通道';
+    $('btnChan').classList.toggle('p', !!S.dev && !S.open);
+  }
+
+  function showNoApi() {
+    $('noApi').hidden = false;
+    $('noApi').innerHTML = '<span class="bad">这个浏览器不能访问 USB 设备（UC、QQ、微信、小米自带浏览器、iPhone 都不行）。' +
+      '请用 <b>Chrome</b>（安卓可在应用商店装）或电脑上的 Chrome / Edge 打开。</span>';
+  }
+
+  $('btnConn').onclick = () => S.dev ? disconnect() : connect(false);
+  $('btnDemo').onclick = () => { connect(true); document.querySelector('#tabs button[data-t=rec]').click(); };
+  if (!Transport.pick()) showNoApi();
+
+  // 授权过的设备：打开网页、插上设备时自动连接，不用每次选
+  async function autoConnect() {
+    if (S.dev || S.connecting) return;
+    const k = await Transport.known();
+    if (k) connect(false, k);
+  }
+  autoConnect();
+  if (navigator.usb && Transport.isAndroid()) navigator.usb.addEventListener('connect', () => setTimeout(autoConnect, 300));
+  if (navigator.serial && !Transport.isAndroid()) navigator.serial.addEventListener('connect', () => setTimeout(autoConnect, 300));
 
   // ---------------- 通道 ----------------
   async function openChannel() {
     if (!S.dev || S.open) return;
     const { nom, dat, fd } = timings();
-    if (!nom || (fd && !dat)) { log('波特率凑不出来，换一个采样点或波特率试试', 'bad'); return; }
+    if (!nom || (fd && !dat)) { log('波特率凑不出来，到“设置”里换一个采样点或波特率', 'bad'); return; }
     S.fdOn = fd; S.nominal = nom.bitrate; S.data = fd ? dat.bitrate : 0;
     S.configuring = true;
     try { if (!await configure(nom, dat, fd)) return; } finally { S.configuring = false; }
+    // 录制中重开通道（改了设置）：时间接着往后走，不从 0 重新算
+    S.tOffset = S.recording ? S.lastT + 0.001 : 0;
     S.clock.reset(); S.clock.ppm = S.ppm;
-    S.hostT0 = performance.now(); S.lastT = 0;
+    S.hostT0 = performance.now(); S.lastT = S.tOffset;
     resetStats();
     await send('O');
-    S.open = true;
+    S.open = true; S.openSilent = S.silent;
     setBusChip();
-    $('btnOpen').disabled = true; $('btnClose').disabled = false;
-    log(`通道已打开：${nom.bitrate / 1000}k${fd ? ' / ' + dat.bitrate / 1e6 + 'M FD' : ''}，${S.silent ? '只听' : '正常收发'}`);
+    updateButtons();
+    log(`通道已打开：${rateText(nom.bitrate)}${fd ? ' / ' + rateText(dat.bitrate) + ' FD' : ''}，${S.silent ? '只听' : '正常收发'}`);
     updateSendHint();
     requestWake();
     if ($('recAuto').checked && !S.recording) startRec();
@@ -210,19 +247,30 @@
     return true;
   }
 
-  async function closeChannel() {
+  async function closeChannel(keepRec) {
     if (!S.open) return;
     stopCyclic();
     await send('C');
     S.open = false;
     setBusChip();
-    $('btnOpen').disabled = !S.dev; $('btnClose').disabled = true;
+    updateButtons();
     log('通道已关闭');
     updateSendHint();
     releaseWake();
   }
-  $('btnOpen').onclick = openChannel;
-  $('btnClose').onclick = closeChannel;
+  $('btnChan').onclick = () => S.open ? closeChannel() : openChannel();
+
+  // 通道开着时改了设置：关掉重开（录制不停）
+  async function reopenIfOpen() {
+    if (!S.open || S.reopening) return;
+    S.reopening = true;
+    const rec = S.recording, auto = $('recAuto').checked;
+    try {
+      await closeChannel();
+      if (rec) $('recAuto').checked = false;  // 录制在继续，不要再新开一段
+      await openChannel();
+    } finally { $('recAuto').checked = auto; S.reopening = false; }
+  }
 
   function setBusChip(text, cls) {
     const c = $('chipBus');
@@ -268,8 +316,8 @@
 
   // ---------------- 收到报文 ----------------
   function frameTime(m) {
-    if (m.ts !== null && S.fw && S.fw.vdlink) return S.clock.seconds(m.ts);
-    return (performance.now() - S.hostT0) / 1000;
+    if (m.ts !== null && S.fw && S.fw.vdlink) return S.tOffset + S.clock.seconds(m.ts);
+    return S.tOffset + (performance.now() - S.hostT0) / 1000;
   }
 
   function onFrame(m) {
@@ -290,6 +338,8 @@
     }
     e.cnt++; e.lastT = t; e.fd = m.fd; e.brs = m.brs; e.rtr = m.rtr; e.data = m.data; e.dlc = m.dlc;
 
+    S.recent.push(m);
+    if (S.recent.length > 2000) S.recent.splice(0, 1000);
     if (!S.paused) {
       S.scroll.push(m);
       if (S.scroll.length > SCROLL_MAX * 2) S.scroll.splice(0, S.scroll.length - SCROLL_MAX);
@@ -376,52 +426,71 @@
   setInterval(() => renderTrace(false), 250);
 
   // ---------------- 发送 ----------------
-  let sendRows = store.get('send', [{ id: '7DF', ext: false, fd: false, brs: false, data: '02 10 03', cyc: 100 }]);
+  // 发送设置（ID、帧类型、周期）只有一份，下面是常用指令（名称 + 数据），都存在本机
+  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false, brs: false }, store.get('sendCfg', {}));
+  let cmds = store.get('cmds', null);
+  if (!cmds) {
+    const old = store.get('send', null);   // 旧版每条单独存 ID 的格式
+    cmds = old ? old.map(r => ({ name: '', data: r.data })) : [
+      { name: '进扩展会话', data: '02 10 03' }, { name: '读故障码', data: '03 19 02 FF' }, { name: '保持在线', data: '02 3E 80' }];
+  }
   const cyclic = new Map();
+  const sf = { sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd', sBrs: 'brs' };
+  for (const [el, k] of Object.entries(sf)) {
+    const x = $(el);
+    if (x.type === 'checkbox') x.checked = !!SC[k]; else x.value = SC[k];
+    x.addEventListener('change', () => { SC[k] = x.type === 'checkbox' ? x.checked : x.value; store.set('sendCfg', SC); renderResp(true); });
+  }
+  const saveCmds = () => store.set('cmds', cmds);
+
   function updateSendHint() {
-    const ok = S.open && !S.silent;
-    $('sendHint').innerHTML = ok ? '可以发送。' : '<span class="warn">要先在“连接”页把模式切到“正常收发”，再打开通道。</span>';
+    const ok = S.open && !S.openSilent;
+    let h = '可以发送。';
+    if (!S.dev) h = '<span class="warn">先在“录制”页连接设备。</span>';
+    else if (!S.open) h = '<span class="warn">通道没打开：到“录制”页点“打开通道”。</span>';
+    else if (S.openSilent) h = '<span class="warn">现在是只听模式，发不了：到“设置”里把模式改成“正常收发”（会自动重开通道）。</span>';
+    $('sendHint').innerHTML = h;
     for (const b of document.querySelectorAll('#sendRows button.tx')) b.disabled = !ok;
   }
   function renderSend() {
     let h = '';
-    sendRows.forEach((r, i) => {
+    cmds.forEach((r, i) => {
       h += `<div class="sendrow" data-i="${i}">
-        <div class="fld">ID（十六进制）<input type="text" class="mono" data-k="id" value="${esc(r.id)}" style="width:110px"></div>
-        <div class="fld">数据（十六进制，空格隔开）<input type="text" class="mono" data-k="data" value="${esc(r.data)}"></div>
-        <div class="row full">
-          <label><input type="checkbox" data-k="ext" ${r.ext ? 'checked' : ''}> 扩展帧</label>
-          <label><input type="checkbox" data-k="fd" ${r.fd ? 'checked' : ''}> FD</label>
-          <label><input type="checkbox" data-k="brs" ${r.brs ? 'checked' : ''}> BRS</label>
-          <label>周期 <input type="number" data-k="cyc" value="${r.cyc || 100}" min="1" style="width:80px"> ms</label>
-        </div>
-        <div class="row full">
-          <button class="b p tx" data-a="once">发送一次</button>
-          <button class="b tx" data-a="cyc">${cyclic.has(i) ? '停止循环' : '循环发送'}</button>
+        <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称（可不填）">
+        <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="数据，如 02 10 03">
+        <div class="btns">
+          <button class="b p tx" data-a="once">发送</button>
+          <button class="b tx" data-a="cyc">${cyclic.has(i) ? '停止' : '循环'}</button>
           <button class="b r" data-a="del">删除</button>
         </div></div>`;
     });
-    $('sendRows').innerHTML = h;
+    $('sendRows').innerHTML = h || '<div class="hint">还没有指令，点“加一条”。</div>';
     updateSendHint();
   }
   $('sendRows').addEventListener('change', e => {
     const row = e.target.closest('.sendrow'); if (!row) return;
-    const r = sendRows[+row.dataset.i], k = e.target.dataset.k;
-    r[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-    store.set('send', sendRows);
+    cmds[+row.dataset.i][e.target.dataset.k] = e.target.value;
+    saveCmds();
   });
-  function buildFrame(r) {
-    const id = parseInt(String(r.id).replace(/^0x/i, ''), 16);
-    if (isNaN(id)) throw new Error('ID 不对');
-    const hex = String(r.data).replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
+  $('sendRows').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.target.dataset.k !== 'data') return;
+    const row = e.target.closest('.sendrow');
+    cmds[+row.dataset.i].data = e.target.value; saveCmds();
+    sendData(e.target.value).catch(err => log('发送失败：' + err.message, 'bad'));
+  });
+  const parseId = v => parseInt(String(v).trim().replace(/^0x/i, ''), 16);
+  function buildFrame(dataText) {
+    const id = parseId(SC.id);
+    if (isNaN(id)) throw new Error('发送 ID 不对');
+    const hex = String(dataText).replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
     if (hex.length % 2) throw new Error('数据要按字节写（两位十六进制一个字节）');
     const data = new Uint8Array(hex.length / 2);
     for (let i = 0; i < data.length; i++) data[i] = parseInt(hex.substr(i * 2, 2), 16);
-    return { id, ext: !!r.ext || id > 0x7FF, fd: !!r.fd, brs: !!r.fd && !!r.brs, data };
+    return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd && !!SC.brs, data };
   }
-  async function sendRow(r) {
-    if (!S.open || S.silent) throw new Error('通道没打开，或者是只听模式');
-    const f = buildFrame(r);
+  async function sendData(dataText) {
+    if (!S.open || S.openSilent) throw new Error('通道没打开，或者是只听模式');
+    const f = buildFrame(dataText);
     await send(Slcan.frameCmd(f));
     // 原版固件不回显发送的报文：自己记一条（时间用本机时间）
     if (!S.fw.vdlink) {
@@ -432,30 +501,60 @@
   }
   $('sendRows').addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
-    const i = +b.closest('.sendrow').dataset.i, r = sendRows[i];
+    const i = +b.closest('.sendrow').dataset.i, r = cmds[i];
     try {
-      if (b.dataset.a === 'once') await sendRow(r);
-      else if (b.dataset.a === 'del') { stopCyclic(i); sendRows.splice(i, 1); store.set('send', sendRows); stopCyclic(); renderSend(); }
-      else if (b.dataset.a === 'cyc') {
+      if (b.dataset.a === 'once') await sendData(r.data);
+      else if (b.dataset.a === 'del') {
+        if (!confirm(`删除“${r.name || r.data}”？`)) return;
+        stopCyclic(); cmds.splice(i, 1); saveCmds(); renderSend();
+      } else if (b.dataset.a === 'cyc') {
         if (cyclic.has(i)) stopCyclic(i);
         else {
-          buildFrame(r);
-          const ms = Math.max(1, +r.cyc || 100);
-          cyclic.set(i, setInterval(() => sendRow(r).catch(err => { stopCyclic(i); log('循环发送停止：' + err.message, 'bad'); }), ms));
+          buildFrame(r.data);
+          const ms = Math.max(1, +SC.cyc || 100);
+          cyclic.set(i, setInterval(() => sendData(r.data).catch(err => { stopCyclic(i); log('循环发送停止：' + err.message, 'bad'); }), ms));
         }
         renderSend();
       }
-    } catch (err) { log('发送失败：' + err.message, 'bad'); }
+    } catch (err) { log('发送失败：' + err.message, 'bad'); updateSendHint(); }
   });
   function stopCyclic(i) {
     if (i === undefined) { for (const t of cyclic.values()) clearInterval(t); cyclic.clear(); }
     else { clearInterval(cyclic.get(i)); cyclic.delete(i); }
-    if ($('sendRows').childNodes.length) for (const b of document.querySelectorAll('#sendRows button[data-a=cyc]')) {
-      const k = +b.closest('.sendrow').dataset.i; b.textContent = cyclic.has(k) ? '停止循环' : '循环发送';
+    for (const b of document.querySelectorAll('#sendRows button[data-a=cyc]')) {
+      const k = +b.closest('.sendrow').dataset.i; b.textContent = cyclic.has(k) ? '停止' : '循环';
     }
   }
-  $('btnAddSend').onclick = () => { sendRows.push({ id: '123', ext: false, fd: false, brs: false, data: '00 00 00 00 00 00 00 00', cyc: 100 }); store.set('send', sendRows); renderSend(); };
+  $('btnAddSend').onclick = () => { cmds.push({ name: '', data: '' }); saveCmds(); renderSend(); const ins = document.querySelectorAll('#sendRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
   renderSend();
+
+  // 最近收发：发送 ID 和回复 ID 的报文。回复 ID 不填时：7DF → 7E8~7EF，7xx → +8，18DAxxyy → 18DAyyxx
+  function respIds() {
+    const tx = parseId(SC.id);
+    if (String(SC.resp).trim()) { const r = parseId(SC.resp); return isNaN(r) ? [] : [r]; }
+    if (isNaN(tx)) return [];
+    if (tx === 0x7DF) return [0x7E8, 0x7E9, 0x7EA, 0x7EB, 0x7EC, 0x7ED, 0x7EE, 0x7EF];
+    if (tx >= 0x700 && tx <= 0x7F7) return [tx + 8];
+    if ((tx >>> 16) === 0x18DA || (tx >>> 16) === 0x18DB) return [(0x18DA0000 | ((tx & 0xFF) << 8) | ((tx >> 8) & 0xFF)) >>> 0];
+    return [];
+  }
+  let respRender = 0;
+  function renderResp(force) {
+    if (!$('send').classList.contains('on')) return;
+    const now = performance.now();
+    if (!force && now - respRender < 300) return;
+    respRender = now;
+    const tx = parseId(SC.id), rs = respIds();
+    const list = S.recent.filter(m => (m.tx && m.id === tx) || (!m.tx && rs.includes(m.id))).slice(-30);
+    $('respInfo').textContent = rs.length ? `（发送 ${hx(tx || 0, 3)}，回复 ${rs.map(x => hx(x, 3)).join('/')}）` : '';
+    let h = '<table><thead><tr><th>时间 s</th><th>ID</th><th>数据</th></tr></thead><tbody>';
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      h += `<tr class="${m.tx ? 'tx' : ''}"><td>${m.t.toFixed(3)}</td><td>${m.tx ? '→' : '←'}${idText(m.id, m.ext)}</td><td class="d">${Array.from(m.data, b => hx(b)).join(' ')}</td></tr>`;
+    }
+    $('respBox').innerHTML = list.length ? h + '</tbody></table>' : '<div class="hint">还没有收发。</div>';
+  }
+  setInterval(() => renderResp(false), 300);
 
   // ---------------- 录制 ----------------
   function startRec() {
@@ -560,6 +659,34 @@
     }
   };
 
+  // ---------------- 导出 / 导入设置 ----------------
+  $('btnExport').onclick = () => {
+    const out = {};
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('canlink.')) out[k.slice(8)] = JSON.parse(localStorage.getItem(k)); } } catch (e) { /* ignore */ }
+    const blob = new Blob([JSON.stringify({ app: 'vdlink-can-tool', version: 1, data: out }, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'can_tool_settings.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  $('btnImport').onclick = () => $('importFile').click();
+  $('importFile').onchange = async () => {
+    const f = $('importFile').files[0]; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      if (!j || j.app !== 'vdlink-can-tool' || !j.data) throw new Error('不是本工具导出的文件');
+      for (const [k, v] of Object.entries(j.data)) store.set(k, v);
+      alert('已导入，页面会重新加载。');
+      location.reload();
+    } catch (e) { alert('导入失败：' + e.message); }
+  };
+  // 请浏览器尽量不要自动清掉本站数据
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
+
+  const lastTab = store.get('tab', 'rec');
+  const tabBtn = document.querySelector(`#tabs button[data-t="${lastTab}"]`);
+  if (tabBtn) tabBtn.click();
+
+  updateButtons();
   updateTiming();
   window.addEventListener('beforeunload', e => { if (S.rec && S.rec.count && (S.recording || !S.saved)) { e.preventDefault(); e.returnValue = ''; } });
   window.CanApp = S; // 调试用
