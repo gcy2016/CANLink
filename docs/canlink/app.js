@@ -247,10 +247,12 @@
     return true;
   }
 
+  // keepRec：改设置自动重开通道时录制不停；手动关通道、断开设备时录制跟着停
   async function closeChannel(keepRec) {
     if (!S.open) return;
     stopCyclic();
     await send('C');
+    if (!keepRec && S.recording) stopRec();
     S.open = false;
     setBusChip();
     updateButtons();
@@ -266,7 +268,7 @@
     S.reopening = true;
     const rec = S.recording, auto = $('recAuto').checked;
     try {
-      await closeChannel();
+      await closeChannel(true);
       if (rec) $('recAuto').checked = false;  // 录制在继续，不要再新开一段
       await openChannel();
     } finally { $('recAuto').checked = auto; S.reopening = false; }
