@@ -679,6 +679,12 @@
       location.reload();
     } catch (e) { alert('导入失败：' + e.message); }
   };
+  // 离线缓存：打开过一次后，没网 / GitHub 打不开也能用
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => {
+      $('offlineInfo').textContent = '离线可用：已存到本机，没网时也能打开。可以在浏览器菜单里“添加到主屏幕 / 安装应用”，像 APP 一样从桌面打开。';
+    }).catch(() => { $('offlineInfo').textContent = '离线缓存没开成（浏览器不支持或在无痕模式）。'; });
+  }
   // 请浏览器尽量不要自动清掉本站数据
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 

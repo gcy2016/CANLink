@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>CAN 工具</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#22507f">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root {
     --bg: #f4f7fb; --card: #fff; --text: #1d2733; --muted: #6b7a8c;
@@ -256,6 +260,7 @@
       <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
     <div class="hint">设置和常用指令存在浏览器里，清理浏览器数据会丢，建议导出一份备份。</div>
+    <div class="hint" id="offlineInfo" style="margin-top:6px"></div>
   </div>
 </section>
 
