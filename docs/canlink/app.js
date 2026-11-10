@@ -145,7 +145,7 @@
     $('chipDev').textContent = t.name;
     $('chipDev').classList.add('on');
     const fwText = S.fw.vdlink ? 'vdlink ' + esc(S.fw.version) : '<span class="warn">' + esc(S.fw.version) + '（原版，建议到“设置 → 固件”刷 vdlink）</span>';
-    $('devInfo').innerHTML = `已连接：<b>${esc(t.name)}</b>，固件：${fwText}`;
+    $('devInfo').innerHTML = `已连接：<b>${esc(t.name)}</b><br>固件：${fwText}`;
     $('fwNow').innerHTML = `当前：${esc(t.name)}，${fwText}`;
     log(`已连接 ${t.name}，固件 ${S.fw.vdlink ? 'vdlink ' + S.fw.version : S.fw.version}`);
     updateButtons();
