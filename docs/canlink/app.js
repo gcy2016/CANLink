@@ -725,9 +725,13 @@
   async function loadFlashFile(which, file) {
     if (!file) { flashFiles[which] = null; renderFileInfo(); return; }
     try {
-      flashFiles[which] = FlashFile.parse(await file.text());   // S19 / HEX（文本格式）
+      flashFiles[which] = FlashFile.parseFile(file.name, await file.text());   // 只收 S19 / HEX
       $(fNameSpan(which)).textContent = file.name;
-    } catch (e) { flashFiles[which] = null; $(fNameSpan(which)).textContent = '解析失败'; alert(`${which === 'driver' ? 'Driver' : 'App'} 解析失败：` + e.message); }
+    } catch (e) {
+      flashFiles[which] = null; $(fNameSpan(which)).textContent = '格式不支持';
+      alert(`${which === 'driver' ? 'Driver' : 'App'} 文件没加载：` + e.message);
+      $(which === 'driver' ? 'fDrv' : 'fApp').value = '';   // 同一个文件再选一次也能触发
+    }
     renderFileInfo();
   }
   $('fDrv').onchange = () => loadFlashFile('driver', $('fDrv').files[0]);
@@ -905,7 +909,7 @@
     if (S.rec) S.rec.seal();
     $('btnRec').textContent = '开始录制'; $('btnRec').classList.remove('r'); $('btnRec').classList.add('p');
     $('btnMark').disabled = true; $('chipRec').hidden = true;
-    $('btnSave').disabled = !S.rec || !S.rec.count; $('btnShare').disabled = !S.rec || !S.rec.count || !navigator.share;
+    $('btnSave').disabled = !S.rec || !S.rec.count; $('btnShare').disabled = !S.rec || !S.rec.count;
     $('btnView').disabled = !S.rec || !S.rec.count;
     updateMarks();
     if (S.rec) log(`录制停止：${S.rec.count} 帧`);
@@ -931,7 +935,7 @@
     $('rDur').textContent = fmtDur(dur);
     $('rCnt').textContent = S.rec.count.toLocaleString();
     const has = S.rec.count > 0 && !S.recording;  // 录制中下载 / 分享 / 查看都置灰
-    $('btnSave').disabled = !has; $('btnView').disabled = !has; $('btnShare').disabled = !has || !navigator.share;
+    $('btnSave').disabled = !has; $('btnView').disabled = !has; $('btnShare').disabled = !has;
     $('rMarks').textContent = S.rec.marks.length ? S.rec.marks.map(m => m.t.toFixed(1) + 's').join('，') : '无';
   }
   function updateMarks() {
@@ -964,12 +968,15 @@
         const blob = await S.rec.toASC(a, b, { comment: `vdlink CAN tool, ${S.nominal / 1000}k${S.fdOn ? ' / ' + S.data / 1e6 + 'M FD' : ''}${S.silent ? ', listen-only' : ''}` });
     return new File([blob], fileName(), { type: 'text/plain' });
   }
-  $('btnSave').onclick = async () => {
-    const f = await makeFile();
+  function downloadFile(f) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(f); a.download = f.name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  }
+  $('btnSave').onclick = async () => {
+    const f = await makeFile();
+    downloadFile(f);
     S.saved = true;
     log(`已保存 ${f.name}（${(f.size / 1048576).toFixed(1)} MB）`);
   };
@@ -983,11 +990,26 @@
     log(`在离线数据里打开 ${f.name}`);
   };
   $('btnShare').onclick = async () => {
-    try {
-      const f = await makeFile();
-      if (navigator.canShare && !navigator.canShare({ files: [f] })) throw new Error('这个浏览器不能分享文件，请用“下载”');
-      await navigator.share({ files: [f], title: f.name });
-    } catch (e) { if (e.name !== 'AbortError') log('分享失败：' + e.message, 'bad'); }
+    if (!S.rec || !S.rec.count) return;
+    let f;
+    try { f = await makeFile(); }
+    catch (e) { alert('生成录制文件失败：' + e.message); return; }
+    let can = false;
+    try { can = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [f] })); } catch (e) { can = false; }
+    if (!can) {
+      // 安卓 UC / 微信、电脑浏览器等不支持分享文件：别让按钮点了没反应，直接改成下载。
+      downloadFile(f); S.saved = true;
+      log(`这个浏览器不能直接分享文件，已改为下载：${f.name}`, 'bad');
+      alert('这个浏览器不能直接分享文件，已改为下载。');
+      return;
+    }
+    try { await navigator.share({ files: [f], title: f.name }); }
+    catch (e) {
+      if (e.name === 'AbortError') return;           // 用户自己取消，不算错
+      downloadFile(f); S.saved = true;
+      log(`分享失败（${e.message}），已改为下载：${f.name}`, 'bad');
+      alert('分享没有成功，已改为下载：' + e.message);
+    }
   };
   updateMarks();
 

@@ -50,4 +50,20 @@ const hx = a => Array.from(a, b => b.toString(16).toUpperCase().padStart(2, '0')
   ok(r.type === 'bin' && r.segs[0].addr === 0x08000000 && hx(r.segs[0].data) === '01020304', 'bin：给定起始地址');
 }
 
+// 界面选文件：扩展名 / 内容不对都要拒绝
+{
+  const hex = [':0400000001020304F2', ':00000001FF'].join('\n');
+  ok(FF.parseFile('app.hex', hex).type === 'hex', 'parseFile：.hex 接收');
+  for (const [name, text, kw] of [
+    ['app.bin', 'hello', '只支持'],
+    ['app.hex', 'hello', '不是 S19'],
+    ['app.txt', hex, '只支持'],
+    ['app.hex', '\u0000\u0001\u0002', '二进制'],
+  ]) {
+    let msg = '';
+    try { FF.parseFile(name, text); } catch (e) { msg = e.message; }
+    ok(msg.includes(kw), `parseFile：${name} 拒绝（${kw}）`);
+  }
+}
+
 console.log(`\n全部通过（${pass} 项）`);

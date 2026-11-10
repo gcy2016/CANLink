@@ -163,7 +163,7 @@
       <button class="b" id="btnShare" disabled>分享</button>
       <button class="b" id="btnView" disabled>查看</button>
     </div>
-    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
+    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）；浏览器不支持文件分享时，会自动改成下载。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
   </div>
 
   <details class="card" id="busBox">
@@ -330,7 +330,7 @@
       <input type="file" id="fApp" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
       <span><b>App</b> <span class="hint" id="fAppName">（应用程序）</span></span>
     </div>
-    <div class="hint" id="fInfo" style="margin-top:8px">支持 S19 / HEX。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
+    <div class="hint" id="fInfo" style="margin-top:8px">只收 S19 / HEX（.s19 / .s28 / .s37 / .srec / .mot / .hex / .ihex）。别的格式会明确拒绝，不会当成刷写数据。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
   </div>
 
   <div class="card">
