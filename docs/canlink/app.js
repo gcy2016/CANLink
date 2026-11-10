@@ -1037,14 +1037,20 @@
     return [0, end];
   }
   function fileName() {
+    const fmt = $('recFmt') ? $('recFmt').value : 'asc';
     const n = $('recName').value.trim().replace(/[\\/:*?"<>|\s]+/g, '_');
     const d = S.rec.startDate, p = v => String(v).padStart(2, '0');
     const def = `can_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-    return (n || def).replace(/\.asc$/i, '') + '.asc';
+    return (n || def).replace(/\.(asc|blf)$/i, '') + '.' + fmt;
   }
   async function makeFile() {
     const [a, b] = saveRange();
-        const blob = await S.rec.toASC(a, b, { comment: `vdlink CAN tool, ${S.nominal / 1000}k${S.fdOn ? ' / ' + S.data / 1e6 + 'M FD' : ''}${S.silent ? ', listen-only' : ''}` });
+    const fmt = $('recFmt') ? $('recFmt').value : 'asc';
+    if (fmt === 'blf') {
+      const blob = await S.rec.toBLF(a, b);
+      return new File([blob], fileName(), { type: 'application/octet-stream' });
+    }
+    const blob = await S.rec.toASC(a, b, { comment: `vdlink CAN tool, ${S.nominal / 1000}k${S.fdOn ? ' / ' + S.data / 1e6 + 'M FD' : ''}${S.silent ? ', listen-only' : ''}` });
     return new File([blob], fileName(), { type: 'text/plain' });
   }
   function downloadFile(f) {

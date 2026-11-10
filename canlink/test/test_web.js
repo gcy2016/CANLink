@@ -93,5 +93,42 @@ const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('�
     assert.strictEqual(fr2.n, 10001);
     assert(Math.abs(fr2.t[0]) < 1e-9 && Math.abs(fr2.t[fr2.n - 1] - 10) < 1e-6);
   });
+  await ok('录制 → BLF → SEF 读回一致（经典/FD/扩展/远程）', async () => {
+    const rec = new Recorder();
+    const frames = [];
+    const cases = [
+      { id: 0x780, ext: false, fd: false, tx: true, rtr: false, brs: false, esi: false, dlc: 8, data: [2, 0x10, 3, 0, 0, 0, 0, 0] },
+      { id: 0x788, ext: false, fd: false, tx: false, rtr: false, brs: false, esi: false, dlc: 6, data: [6, 0x50, 3, 0, 0, 0] },
+      { id: 0x18FF50E5, ext: true, fd: false, tx: false, rtr: false, brs: false, esi: false, dlc: 8, data: [1, 2, 3, 4, 5, 6, 7, 8] },
+      { id: 0x123, ext: false, fd: false, tx: true, rtr: true, brs: false, esi: false, dlc: 4, data: [] },
+      { id: 0x7DF, ext: false, fd: true, tx: true, rtr: false, brs: true, esi: false, dlc: 15, data: Array.from({ length: 64 }, (_, i) => i) },
+      { id: 0x7E8, ext: false, fd: true, tx: false, rtr: false, brs: false, esi: true, dlc: 9, data: [9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0xAA, 0xBB] },
+      { id: 0x100, ext: false, fd: true, tx: false, rtr: false, brs: true, esi: false, dlc: 3, data: [0xDE, 0xAD, 0xBE] },
+    ];
+    cases.forEach((c, i) => { const f = { ...c, data: Uint8Array.from(c.data) }; rec.push(i * 0.001, f); frames.push([i * 0.001, f]); });
+    rec.mark(0.0035, 'Mark X');
+    const blob = await rec.toBLF();
+    const ab = await blob.arrayBuffer();
+    assert.strictEqual(String.fromCharCode(...new Uint8Array(ab).subarray(0, 4)), 'LOGG');
+    const fr = await CanLog.read('x.blf', ab);
+    assert.strictEqual(fr.n, frames.length);
+    for (let k = 0; k < frames.length; k++) {
+      const [t, f] = frames[k];
+      assert(Math.abs(fr.t[k] - t) < 1e-6, `t ${k}`);
+      assert.strictEqual(fr.id[k] & 0x1FFFFFFF, f.id);
+      assert.strictEqual(!!(fr.fl[k] & 1), f.tx);
+      assert.strictEqual(!!(fr.fl[k] & 2), f.fd);
+      assert.deepStrictEqual(Array.from(fr.bytes(k)), Array.from(f.data));
+    }
+    // 大录制跨 128KB 容器边界
+    const big = new Recorder();
+    for (let i = 0; i < 6000; i++)
+      big.push(i * 0.004, { id: 0x700 + (i % 16), ext: false, fd: i % 2 === 0, tx: i % 3 === 0, rtr: false, brs: true, esi: false, dlc: 15, data: new Uint8Array(64).fill(i & 0xFF) });
+    const bb = await (await big.toBLF()).arrayBuffer();
+    const bfr = await CanLog.read('big.blf', bb);
+    assert.strictEqual(bfr.n, 6000);
+    assert.strictEqual(bfr.id[5999] & 0x1FFFFFFF, 0x700 + (5999 % 16));
+    assert.deepStrictEqual(Array.from(bfr.bytes(1234)), Array.from(new Uint8Array(64).fill(1234 & 0xFF)));
+  });
   console.log(`全部通过（${n} 项）`);
 })().catch(e => { console.error('✗', e); process.exit(1); });
