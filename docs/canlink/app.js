@@ -173,6 +173,7 @@
     $('devInfo').textContent = '未连接。用 USB 数据线连上 CANable 后点“连接设备”。'; $('fwNow').textContent = '当前：未连接';
     updateButtons();
     updateSendHint();
+    refreshNoApi();
   }
 
   function updateButtons() {
@@ -189,9 +190,10 @@
       '请用 <b>Chrome</b>（安卓可在应用商店装）或电脑上的 Chrome / Edge 打开。</span>';
   }
 
+  function refreshNoApi() { if (!Transport.pick()) showNoApi(); else $('noApi').hidden = true; }
   $('btnConn').onclick = () => S.dev ? disconnect() : connect(false);
   $('btnDemo').onclick = () => { connect(true); document.querySelector('#tabs button[data-t=rec]').click(); };
-  if (!Transport.pick()) showNoApi();
+  refreshNoApi();
 
   // 授权过的设备：打开网页、插上设备时自动连接，不用每次选
   async function autoConnect() {
@@ -499,17 +501,26 @@
   }
   function fillCtrlFields() {
     const c = ctrls[curCtrl] || {};
-    $('cName').value = c.name || ''; $('cReq').value = c.req || ''; $('cResp').value = c.resp || '';
+    $('cPair').value = [c.req, c.resp].filter(x => x).join('/');
     $('cFunc').value = c.func || ''; $('cPad').value = c.pad || ''; $('cFd').checked = !!c.fd;
+    $('ctrlDel').disabled = !!c.builtin;
     $('cBrs').checked = c.brs !== false; linkCBrs();
     $('cExt').checked = !!c.ext;
   }
-  for (const [el, k, t] of [['cName', 'name', 's'], ['cReq', 'req', 's'], ['cResp', 'resp', 's'], ['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cBrs', 'brs', 'b'], ['cExt', 'ext', 'b']]) {
-    $(el).addEventListener('change', () => { ctrls[curCtrl][k] = t === 'b' ? $(el).checked : $(el).value.trim(); saveCtrls(); if (el === 'cName') renderCtrlSel(); renderResp(true); });
+  for (const [el, k, t] of [['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cBrs', 'brs', 'b'], ['cExt', 'ext', 'b']]) {
+    $(el).addEventListener('change', () => { ctrls[curCtrl][k] = t === 'b' ? $(el).checked : $(el).value.trim(); saveCtrls(); renderResp(true); });
   }
+  // 请求 / 响应 ID 合并成一个框：分隔符不挑，/ 、； , 空格 等都能分出两个 ID
+  $('cPair').addEventListener('change', () => {
+    const parts = $('cPair').value.split(/[\s,，;；、\/|]+/).map(s => s.trim()).filter(Boolean);
+    const c = ctrls[curCtrl]; if (!c) return;
+    if (parts.length >= 2) { c.req = parts[0]; c.resp = parts[1]; }
+    else if (parts.length === 1) { c.req = parts[0]; }
+    saveCtrls(); fillCtrlFields(); renderResp(true);
+  });
   $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); });
-  $('ctrlAdd').onclick = () => { ctrls.push({ name: '控制器 ' + (ctrls.length + 1), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
-  $('ctrlDel').onclick = () => { if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${ctrls[curCtrl].name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
+  $('ctrlAdd').onclick = () => { const nm = prompt('输入控制器名称', '控制器 ' + (ctrls.length + 1)); if (nm === null) return; ctrls.push({ name: nm.trim() || ('控制器 ' + (ctrls.length + 1)), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
+  $('ctrlDel').onclick = () => { const c = ctrls[curCtrl]; if (c && c.builtin) { alert('内置控制器不能删除（内置的安全算法等配置挂在它上面，删了就没了）。'); return; } if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${c.name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
 
   // ISO-TP 实时收发引擎：发帧走原始帧通道，收到的每一帧喂给它
   const diagLog = m => { $('diagOut').innerHTML = `<span class="hint">${esc(m)}</span>`; };
@@ -742,7 +753,7 @@
     if (sec.flow) { $('fFlow').value = JSON.stringify(sec.flow, null, 1); store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = '已载入内置流程'; }
     if (sec.ctrl) {
       let idx = ctrls.findIndex(c => c.name === sec.ctrl.name);
-      if (idx < 0) { ctrls.push({ ...sec.ctrl }); idx = ctrls.length - 1; } else ctrls[idx] = { ...ctrls[idx], ...sec.ctrl };
+      if (idx < 0) { ctrls.push({ ...sec.ctrl, builtin: true }); idx = ctrls.length - 1; } else ctrls[idx] = { ...ctrls[idx], ...sec.ctrl, builtin: true };
       curCtrl = idx; saveCtrls(); renderCtrlSel();
     }
     flashCtrlHint();
@@ -968,7 +979,7 @@
     S.recT0 = S.lastT;
     S.saved = false;
     $('btnRec').textContent = '停止录制'; $('btnRec').classList.add('r'); $('btnRec').classList.remove('p');
-    $('btnMark').disabled = false; $('chipRec').hidden = false;
+    $('btnMark').disabled = false; $('chipRec').classList.add('show');
     $('btnSave').disabled = true; $('btnShare').disabled = true; $('btnView').disabled = true;
     log('开始录制');
   }
@@ -976,7 +987,7 @@
     S.recording = false;
     if (S.rec) S.rec.seal();
     $('btnRec').textContent = '开始录制'; $('btnRec').classList.remove('r'); $('btnRec').classList.add('p');
-    $('btnMark').disabled = true; $('chipRec').hidden = true;
+    $('btnMark').disabled = true; $('chipRec').classList.remove('show');
     $('btnSave').disabled = !S.rec || !S.rec.count; $('btnShare').disabled = !S.rec || !S.rec.count;
     $('btnView').disabled = !S.rec || !S.rec.count;
     updateMarks();

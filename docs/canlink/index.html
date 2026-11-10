@@ -29,7 +29,8 @@
   @keyframes blink { to { visibility: hidden; } }
   details > summary { cursor: pointer; font-weight: 600; color: var(--blue-d); }
   details.card > summary { font-size: 16px; }
-  #stat { margin-left: auto; font-size: 12px; opacity: .92; font-family: var(--mono); }
+  #stat { flex-basis: 100%; text-align: right; font-size: 12px; opacity: .92; font-family: var(--mono); }
+  #chipRec { visibility: hidden; } #chipRec.show { visibility: visible; }
   nav { display: flex; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; overflow-x: auto; }
   nav button { flex: 1; min-width: 64px; border: 0; background: none; padding: 11px 6px; font-size: 15px; color: var(--muted); border-bottom: 3px solid transparent; cursor: pointer; }
   nav button.on { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
@@ -63,6 +64,8 @@
   .kv div { background: var(--blue-l); border-radius: 8px; padding: 6px 10px; }
   .kv b { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
   .kv span { font-family: var(--mono); }
+  .kv3 { grid-template-columns: repeat(3, 1fr); }
+  .kv3 div { padding: 4px 8px; }
   .seg { display: inline-flex; border: 1.5px solid var(--blue); border-radius: 8px; overflow: hidden; }
   .seg button { border: 0; background: #fff; color: var(--blue); padding: 6px 12px; cursor: pointer; }
   .seg button.on { background: var(--blue); color: #fff; }
@@ -120,7 +123,7 @@
   <h1>CAN 工具</h1>
   <span class="chip" id="chipDev">未连接</span>
   <span class="chip" id="chipBus">通道关闭</span>
-  <span class="chip" id="chipRec" hidden><i class="dot"></i>录制中</span>
+  <span class="chip" id="chipRec"><i class="dot"></i>录制中</span>
   <span id="stat"></span>
 </header>
 <nav id="tabs">
@@ -136,13 +139,15 @@
   <div class="card">
     <div class="row">
       <button class="b p" id="btnConn">连接设备</button>
+      <span class="hint" id="devInfo" style="flex:1;min-width:150px">用 USB 数据线连上 CANable 后点“连接设备”。</span>
+    </div>
+    <div class="row">
       <button class="b" id="btnChan" disabled>打开通道</button>
       <button class="b" id="btnRec">开始录制</button>
       <button class="b" id="btnMark" disabled>打标记</button>
     </div>
-    <div class="hint" id="devInfo">用 USB 数据线连上 CANable 后点“连接设备”。</div>
     <div class="hint" id="noApi" hidden></div>
-    <div class="kv" style="margin-top:10px">
+    <div class="kv kv3" style="margin-top:10px">
       <div><b>时长</b><span id="rDur">—</span></div>
       <div><b>帧数</b><span id="rCnt">—</span></div>
       <div><b>标记</b><span id="rMarks">—</span></div>
@@ -154,8 +159,8 @@
   <div class="card">
     <h2>保存 ASC</h2>
     <div class="row">
-      <div class="fld">范围
-        <select id="range"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select></div>
+      <select id="range" aria-label="保存范围"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select>
+      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:120px">
       <div class="fld" id="fMarks" hidden>从 / 到
         <span style="display:flex;gap:6px"><select id="mFrom"></select><select id="mTo"></select></span></div>
       <div class="fld" id="fLast" hidden>最后多少秒<input type="number" id="lastSec" value="60" min="1" style="width:100px"></div>
@@ -163,7 +168,6 @@
         <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
     </div>
     <div class="row">
-      <input type="text" id="recName" placeholder="文件名（可不填）" style="width:120px">
       <button class="b p" id="btnSave" disabled>下载</button>
       <button class="b" id="btnShare" disabled>分享</button>
       <button class="b" id="btnView" disabled>查看</button>
@@ -219,11 +223,9 @@
       <button class="b r" id="ctrlDel">删除</button>
     </div>
     <div class="row ctrlrow" style="align-items:flex-end">
-      <div class="fld">名称<input type="text" id="cName" style="width:130px"></div>
-      <div class="fld">请求 ID<input type="text" class="mono" id="cReq" style="width:100px"></div>
-      <div class="fld">响应 ID<input type="text" class="mono" id="cResp" style="width:100px"></div>
-      <div class="fld">功能寻址 ID<input type="text" class="mono" id="cFunc" placeholder="如 7DF" style="width:100px"></div>
-      <div class="fld">填充字节<input type="text" class="mono" id="cPad" placeholder="00" style="width:70px"></div>
+      <div class="fld" style="flex:1;min-width:150px">请求 / 响应 ID<input type="text" class="mono" id="cPair" placeholder="如 780/788"></div>
+      <div class="fld">功能寻址 ID<input type="text" class="mono" id="cFunc" placeholder="如 7DF" style="width:92px"></div>
+      <div class="fld">填充字节<input type="text" class="mono" id="cPad" placeholder="00" style="width:64px"></div>
     </div>
     <div class="row">
       <label class="tgl"><input type="checkbox" id="cFd" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
