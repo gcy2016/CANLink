@@ -491,6 +491,8 @@
     return { req: parseId(c.req), resp: parseId(c.resp), func: c.func ? parseId(c.func) : null,
       fd: !!c.fd, brs: c.brs !== false, ext: !!c.ext, pad: pad ? parseId(pad) & 0xFF : 0 };
   }
+  function linkCBrs() { const b = $('cBrs'); b.disabled = !$('cFd').checked; b.closest('label').classList.toggle('off', b.disabled); }
+  $('cFd').addEventListener('change', linkCBrs);
   function renderCtrlSel() {
     $('ctrlSel').innerHTML = ctrls.map((c, i) => `<option value="${i}"${i === curCtrl ? ' selected' : ''}>${esc(c.name || ('控制器 ' + (i + 1)))}</option>`).join('');
     fillCtrlFields();
@@ -499,9 +501,10 @@
     const c = ctrls[curCtrl] || {};
     $('cName').value = c.name || ''; $('cReq').value = c.req || ''; $('cResp').value = c.resp || '';
     $('cFunc').value = c.func || ''; $('cPad').value = c.pad || ''; $('cFd').checked = !!c.fd;
+    $('cBrs').checked = c.brs !== false; linkCBrs();
     $('cExt').checked = !!c.ext;
   }
-  for (const [el, k, t] of [['cName', 'name', 's'], ['cReq', 'req', 's'], ['cResp', 'resp', 's'], ['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cExt', 'ext', 'b']]) {
+  for (const [el, k, t] of [['cName', 'name', 's'], ['cReq', 'req', 's'], ['cResp', 'resp', 's'], ['cFunc', 'func', 's'], ['cPad', 'pad', 's'], ['cFd', 'fd', 'b'], ['cBrs', 'brs', 'b'], ['cExt', 'ext', 'b']]) {
     $(el).addEventListener('change', () => { ctrls[curCtrl][k] = t === 'b' ? $(el).checked : $(el).value.trim(); saveCtrls(); if (el === 'cName') renderCtrlSel(); renderResp(true); });
   }
   $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); });
@@ -895,17 +898,19 @@
   let lastRunIdx = -1;
 
   // ---- 手动发送原始帧（不走 ISO-TP，用于非诊断报文 / 循环发送） ----
-  // BRS 不需要单独设置：CANFD 固定带 BRS，经典 CAN 没有 BRS。
-  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false }, store.get('sendCfg', {}));
+  // BRS 与 CANFD 联动：经典 CAN 没有 BRS，BRS 开关只在 CANFD 时可用（默认开）。
+  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false, brs: true }, store.get('sendCfg', {}));
   const cyclic = new Map();
-  for (const [el, k] of Object.entries({ sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd' })) {
+  for (const [el, k] of Object.entries({ sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd', sBrs: 'brs' })) {
     const x = $(el); if (x.type === 'checkbox') x.checked = !!SC[k]; else x.value = SC[k];
     x.addEventListener('change', () => { SC[k] = x.type === 'checkbox' ? x.checked : x.value; store.set('sendCfg', SC); });
   }
+  function linkSBrs() { const b = $('sBrs'); b.disabled = !$('sFd').checked; b.closest('label').classList.toggle('off', b.disabled); }
+  $('sFd').addEventListener('change', linkSBrs); linkSBrs();
   function buildFrame(dataText) {
     const id = parseId(SC.id); if (isNaN(id)) throw new Error('发送 ID 不对');
     const data = parseHex(dataText);
-    return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd, data };
+    return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd && SC.brs !== false, data };
   }
   async function sendData(dataText) {
     if (!S.open || S.openSilent) throw new Error('通道没打开，或者是只听模式');
