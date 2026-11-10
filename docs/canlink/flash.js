@@ -51,7 +51,7 @@
   // flow: 流程配置（同 DEFAULT_FLOW）
   // files: { driver: {segs}, app: {segs} }（flashfile.js 解析出来的，可只给一个）
   // keyPlugin: 安全算法 JS 代码（字符串），security 步用
-  // tester: 指纹里的诊断仪编号（字节数组），fingerprint 步用
+  // tester: 指纹里的诊断仪编号（字节数组），fingerprint 步用；界面层优先自动获取，取不到才用内置写死值
   // Diag: diag.js 的 API（runKeyPlugin），node 自测时传入；浏览器里默认取 window.Diag
   // hooks: { onStep(i,total,step,status,msg), onProgress(frac,text), log(msg,cls), shouldStop() }
   async function runFlash(o) {
@@ -108,6 +108,12 @@
       await uds([0x2E, ...did, now.getFullYear() % 100, now.getMonth() + 1, now.getDate(), ...tester]);
     }
 
+    // 总进度按这次流程里所有要刷的文件一起算，跨 Driver / App 单调走到 100%
+    const flashSteps = (flow.steps || []).filter(s => s.op === 'flash' && files && files[s.file]);
+    let grandTotal = 0;
+    for (const s of flashSteps) grandTotal += (files[s.file].segs || []).reduce((n, x) => n + x.data.length, 0);
+    let grandDone = 0;
+
     // 刷一个文件：每段 34 请求下载 → 36 分块传输 → 37 退出；可选先擦除、后激活
     async function flashFile(segs, step) {
       if (!segs || !segs.length) throw new Error('没有刷写数据（文件没选或解析为空）');
@@ -132,8 +138,10 @@
           const part = seg.data.subarray(off, off + chunk);
           const rt = await uds([0x36, sn & 0xFF, ...Array.from(part)]);
           if (rt.length < 2 || rt[1] !== (sn & 0xFF)) throw new Error(`36 块序号不对（在 ${off}）`);
-          off += part.length; doneBytes += part.length; sn = (sn + 1) & 0xFF;
-          hooks.onProgress && hooks.onProgress(doneBytes / totalBytes, `${step.name}：${doneBytes}/${totalBytes} 字节`);
+          off += part.length; doneBytes += part.length; grandDone += part.length; sn = (sn + 1) & 0xFF;
+          const frac = grandTotal ? grandDone / grandTotal : doneBytes / totalBytes;
+          const pct = Math.max(0, Math.min(100, Math.round(frac * 100)));
+          hooks.onProgress && hooks.onProgress(frac, `${pct}%`);
           if (step.blockWait) await sleep(step.blockWait);
         }
         await uds([0x37]);                            // 37 退出传输

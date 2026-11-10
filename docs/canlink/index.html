@@ -73,9 +73,11 @@
   .ch { background: var(--hl); border-radius: 2px; }
   .tbl { max-height: 65vh; overflow: auto; }
   .r { text-align: right; }
-  .sendrow { display: grid; grid-template-columns: 150px 1fr auto; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
+  .sendrow { display: grid; grid-template-columns: auto minmax(120px, 180px) 1fr auto; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
   .sendrow:first-child { border-top: 0; }
   .sendrow .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 4px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
   #log, #fLog { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
@@ -244,11 +246,16 @@
   </div>
 
   <div class="card">
+    <h2>诊断应答</h2>
+    <div id="diagOut" class="hint">点上面的按钮，或在下面“手动发送”里发诊断指令，结果显示在这里。</div>
+  </div>
+
+  <div class="card">
     <h2>故障码</h2>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
-      <div class="fld" style="flex:0 0 auto">子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:84px"></div>
       <button class="b p" id="btnReadDtc">读故障码</button>
       <button class="b r" id="btnClrDtc">清故障码</button>
+      <div class="fld" style="flex:0 0 auto">子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:84px"></div>
     </div>
     <div class="hint" id="dtcHint">子功能默认 <code>02 FF</code>（按状态掩码读）。读出的故障码会对照“查看 → 离线数据”里加载的诊断问卷显示含义。</div>
     <div id="dtcBox" style="margin-top:8px"></div>
@@ -257,27 +264,25 @@
   <div class="card">
     <h2>读 / 写数据（DID）</h2>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
-      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didId" placeholder="如 FD54" style="width:84px"></div>
       <button class="b p" id="btnReadDid">读</button>
-      <div class="fld" style="flex:1 1 auto;min-width:0">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01" style="width:100%"></div>
+      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didReadId" placeholder="如 FD54" style="width:84px"></div>
+    </div>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
       <button class="b r" id="btnWriteDid">写</button>
+      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didWriteId" placeholder="如 FD54" style="width:84px"></div>
+      <div class="fld" style="flex:1 1 auto;min-width:0">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01" style="width:100%"></div>
     </div>
   </div>
 
   <div class="card">
     <h2>例程控制（31）</h2>
     <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <button class="b p" id="btnRtn">执行</button>
       <div class="fld" style="flex:0 0 auto">类型
         <select id="rtnType"><option value="01">启动</option><option value="02">停止</option><option value="03">读结果</option></select></div>
       <div class="fld" style="flex:0 0 auto">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:84px"></div>
       <div class="fld" style="flex:1 1 auto;min-width:0">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填" style="width:100%"></div>
-      <button class="b p" id="btnRtn">执行</button>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>诊断应答</h2>
-    <div id="diagOut" class="hint">点上面的按钮，或在下面“手动发送”里发诊断指令，结果显示在这里。</div>
   </div>
 
   <div class="card">
@@ -297,7 +302,7 @@
     <div class="row">
       <label class="tgl"><input type="checkbox" id="sExt"><span class="t-off">标准帧</span><span class="t-on">扩展帧</span></label>
       <label class="tgl"><input type="checkbox" id="sFd"><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
-      <label><input type="checkbox" id="sBrs"> BRS</label>
+      <span class="hint">CANFD 自动带 BRS</span>
     </div>
     <div class="row" style="margin-top:6px">
       <input type="text" id="rawData" class="mono" placeholder="原始数据，如 02 10 03" style="flex:1;min-width:160px">
@@ -314,7 +319,7 @@
 <section id="flash">
   <div class="card">
     <h2>刷写</h2>
-    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）在“诊断”页选。安全算法、指纹诊断仪编号已随开屏密码解锁内置好，不用再填。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX。</p>
+    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）在“诊断”页选。安全算法随开屏密码解锁内置好；指纹诊断仪编号自动获取，取不到才用内置值兜底，不用填。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX。</p>
     <div class="hint" id="fCtrl"></div>
   </div>
 

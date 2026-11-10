@@ -615,11 +615,11 @@
     await udsReq([0x14, 0xFF, 0xFF, 0xFF]); $('dtcBox').innerHTML = '';
   };
 
-  // 读 / 写 DID
-  $('btnReadDid').onclick = () => { try { const did = parseHex($('didId').value); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (e) { diagLog(e.message); } };
+  // 读 / 写 DID（两行各一个 DID，读、写可以填不同的 DID）
+  $('btnReadDid').onclick = () => { try { const did = parseHex($('didReadId').value); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (e) { diagLog(e.message); } };
   $('btnWriteDid').onclick = async () => {
     try {
-      const did = parseHex($('didId').value), data = parseHex($('didData').value);
+      const did = parseHex($('didWriteId').value), data = parseHex($('didData').value);
       if (did.length < 1) throw new Error('填 DID');
       if (!confirm(`写 DID ${hexs(did)}：${hexs(data)}？`)) return;
       await udsReq([0x2E, ...did, ...data]);
@@ -644,12 +644,11 @@
     let h = '';
     cmds.forEach((r, i) => {
       h += `<div class="sendrow" data-i="${i}">
+        <div class="btns"><button class="b p tx" data-a="once">发送</button></div>
         <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称（可不填）">
         <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="UDS 数据，如 10 03">
-        <div class="btns">
-          <button class="b p tx" data-a="once">发送</button>
-          <button class="b r" data-a="del">删除</button>
-        </div></div>`;
+        <div class="btns"><button class="b r" data-a="del">删除</button></div>
+      </div>`;
     });
     $('sendRows').innerHTML = h || '<div class="hint">还没有指令，点“加一条”。</div>';
     updateSendHint();
@@ -673,7 +672,55 @@
   // 复用诊断页的当前控制器 curCfg() 和安全算法插件 secCode；文件解析用 FlashFile，流程引擎用 Flash。
   const flashFiles = { driver: null, app: null };   // 解析后的 { type, segs }
   let flashing = false, flashStop = false;
-  let flashTester = store.get('flashTester', '');    // 指纹诊断仪编号（内置，不在页面显示）
+  let flashTester = store.get('flashTester', '');    // 指纹诊断仪编号（内置，自动获取失败时兜底）
+
+  // 指纹里的诊断仪编号（F184 后 4 字节）：优先自动获取，失败才回退内置写死值。
+  //   1) 所连 USB 设备的序列号（WebUSB 能取到 serialNumber；Web Serial 取不到）
+  //   2) 本机标识：浏览器特征 + 本机随机盐（第一次生成后存在本机）做 SHA-256，取前 4 字节
+  //   3) secrets 里原来的写死值
+  const hex4 = a => Array.from(a, b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+  async function sha4(text) {
+    try {
+      if (typeof crypto === 'undefined' || !crypto.subtle) return null;
+      const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(h).slice(0, 4));
+    } catch (e) { return null; }
+  }
+  function serial4(serial) {
+    const v = String(serial || '').trim();
+    if (!v) return null;
+    if (/^\d+$/.test(v)) {
+      const n = Number(v);
+      if (Number.isSafeInteger(n) && n > 0 && n <= 0xFFFFFFFF) return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+    }
+    return null;
+  }
+  async function autoTesterId() {
+    // 1) 所连设备序列号
+    const sn = S.dev && S.dev.serialNumber;
+    if (sn) {
+      const b = serial4(sn) || await sha4('usb|' + sn);
+      if (b) return { bytes: b, source: 'USB 设备序列号 ' + sn };
+    }
+    // 2) 本机标识
+    try {
+      let salt = store.get('hostSalt', '');
+      if (!salt) {
+        const r = new Uint8Array(16); crypto.getRandomValues(r);
+        salt = Array.from(r, x => x.toString(16).padStart(2, '0')).join('');
+        store.set('hostSalt', salt);
+      }
+      const material = [navigator.userAgent, navigator.platform, navigator.language,
+        screen.width + 'x' + screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone || '', salt].join('|');
+      const b = await sha4(material);
+      if (b) return { bytes: b, source: '本机标识（浏览器特征 + 本机随机盐，SHA-256 取前 4 字节）' };
+    } catch (e) { /* 下面回退 */ }
+    // 3) 内置写死值兜底
+    let b = [];
+    try { b = Flash.parseHex(flashTester); } catch (e) { /* ignore */ }
+    if (b.length) return { bytes: b, source: '自动获取失败，已回退内置写死值 ' + hex4(b) };
+    return { bytes: [], source: '自动获取失败，也没有内置诊断仪编号' };
+  }
 
   // 开屏密码解锁内置配置：控制器 / 安全算法 / 诊断仪编号 / 刷写流程加密放在 secrets.enc.json。
   // 加密方案同 SEF 主站（PBKDF2-SHA256 + AES-256-GCM），密码不进仓库；解锁后自动载入，页面不显示这些内容。
@@ -722,15 +769,29 @@
   }
 
   const fNameSpan = which => which === 'driver' ? 'fDrvName' : 'fAppName';
+  const flashLoadSeq = { driver: 0, app: 0 };
+  const fEmptyText = which => which === 'driver' ? '（引导驱动，可不选）' : '（应用程序）';
   async function loadFlashFile(which, file) {
-    if (!file) { flashFiles[which] = null; renderFileInfo(); return; }
+    const input = $(which === 'driver' ? 'fDrv' : 'fApp');
+    const span = $(fNameSpan(which));
+    const seq = ++flashLoadSeq[which];              // 连续选文件时，只认最后一次
+    if (!file) { flashFiles[which] = null; span.textContent = fEmptyText(which); renderFileInfo(); return; }
+    flashFiles[which] = null;
+    span.innerHTML = '<span class="warn"><i class="spin"></i>加载中…</span>';
+    renderFileInfo();
     try {
-      flashFiles[which] = FlashFile.parseFile(file.name, await file.text());   // 只收 S19 / HEX
-      $(fNameSpan(which)).textContent = file.name;
+      const text = await file.text();
+      if (seq !== flashLoadSeq[which]) return;
+      span.innerHTML = '<span class="warn"><i class="spin"></i>解析中…</span>';
+      await new Promise(r => setTimeout(r, 20));    // 先让“解析中”显示出来，再开始解析
+      if (seq !== flashLoadSeq[which]) return;
+      flashFiles[which] = FlashFile.parseFile(file.name, text);   // 只收 S19 / HEX
+      span.textContent = file.name;
     } catch (e) {
-      flashFiles[which] = null; $(fNameSpan(which)).textContent = '格式不支持';
+      if (seq !== flashLoadSeq[which]) return;
+      flashFiles[which] = null; span.textContent = '格式不支持';
       alert(`${which === 'driver' ? 'Driver' : 'App'} 文件没加载：` + e.message);
-      $(which === 'driver' ? 'fDrv' : 'fApp').value = '';   // 同一个文件再选一次也能触发
+      input.value = '';   // 同一个文件再选一次也能触发
     }
     renderFileInfo();
   }
@@ -806,14 +867,15 @@
     try { flow = parseFlow(); } catch (e) { alert(e.message); return; }
     if (!flashFiles.driver && !flashFiles.app) { alert('先选 Driver 或 App 文件'); return; }
     const needFp = flow.steps.some(s => s.op === 'fingerprint');
-    let tester = [];
-    try { tester = Flash.parseHex(flashTester); } catch (e) { /* ignore，下面判断 */ }
-    if (needFp && !tester.length) { if (!confirm('没载入指纹诊断仪编号（请先在开屏输入密码解锁），将用全 0 写指纹，继续？')) return; }
+    const testerInfo = await autoTesterId();
+    const tester = testerInfo.bytes;
+    if (needFp && !tester.length) { if (!confirm('没有可用的诊断仪编号（自动获取失败，也没载入内置值），将用全 0 写指纹，继续？')) return; }
     if (!confirm('确认开始刷写？\n请先确认电压 / 充电宝接好、手机不锁屏，中途别拔线。')) return;
 
     flashing = true; flashStop = false;
     $('fStart').disabled = true; $('fStop').hidden = false; $('fStop').textContent = '停止';
-    $('fLog').innerHTML = ''; $('fBar').style.width = '0'; $('fProg').textContent = '';
+    $('fLog').innerHTML = ''; $('fBar').style.width = '0'; $('fProg').textContent = '0%';
+    if (needFp) flog('指纹编号来源：' + testerInfo.source);
     renderSteps(flow.steps, -1, '');
     try {
       const r = await Flash.runFlash({
@@ -825,7 +887,7 @@
           onProgress: (frac, text) => { $('fBar').style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; $('fProg').textContent = text || ''; },
         },
       });
-      if (r.ok) { $('fBar').style.width = '100%'; $('fProg').innerHTML = '<span class="good">刷写完成</span>'; }
+      if (r.ok) { $('fBar').style.width = '100%'; $('fProg').innerHTML = '<span class="good">刷写完成 100%</span>'; }
       else { $('fProg').innerHTML = '<span class="bad">刷写失败：' + esc(r.error || '') + '</span>'; }
     } catch (e) { flog('出错：' + e.message, 'bad'); $('fProg').innerHTML = '<span class="bad">出错：' + esc(e.message) + '</span>'; }
     finally { flashing = false; $('fStart').disabled = false; $('fStop').hidden = true; }
@@ -833,16 +895,17 @@
   let lastRunIdx = -1;
 
   // ---- 手动发送原始帧（不走 ISO-TP，用于非诊断报文 / 循环发送） ----
-  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false, brs: false }, store.get('sendCfg', {}));
+  // BRS 不需要单独设置：CANFD 固定带 BRS，经典 CAN 没有 BRS。
+  const SC = Object.assign({ id: '7DF', resp: '', cyc: 100, ext: false, fd: false }, store.get('sendCfg', {}));
   const cyclic = new Map();
-  for (const [el, k] of Object.entries({ sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd', sBrs: 'brs' })) {
+  for (const [el, k] of Object.entries({ sId: 'id', sResp: 'resp', sCyc: 'cyc', sExt: 'ext', sFd: 'fd' })) {
     const x = $(el); if (x.type === 'checkbox') x.checked = !!SC[k]; else x.value = SC[k];
     x.addEventListener('change', () => { SC[k] = x.type === 'checkbox' ? x.checked : x.value; store.set('sendCfg', SC); });
   }
   function buildFrame(dataText) {
     const id = parseId(SC.id); if (isNaN(id)) throw new Error('发送 ID 不对');
     const data = parseHex(dataText);
-    return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd && !!SC.brs, data };
+    return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd, data };
   }
   async function sendData(dataText) {
     if (!S.open || S.openSilent) throw new Error('通道没打开，或者是只听模式');

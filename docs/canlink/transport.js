@@ -78,6 +78,7 @@ const Transport = (() => {
         } catch (e) { /* ignore */ }
       }
       this.name = this.dev.productName || 'USB 设备';
+      this.serialNumber = this.dev.serialNumber || '';   // 刷写指纹的诊断仪编号优先用它
       this.running = true;
       this.reading = this.readLoop();
     }
