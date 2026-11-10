@@ -86,8 +86,25 @@
     return { type: 'bin', segs: [{ addr: (binAddr || 0) >>> 0, data }] };
   }
 
+  // 界面选文件用：扩展名和内容都要像 S19 / HEX 才收，明显的别的格式直接报错。
+  // （parse 保留原来的 bin 兜底，给自测和别处用；界面不走那条路。）
+  const FILE_EXTS = ['s19', 's28', 's37', 'srec', 'mot', 'hex', 'ihex'];
+  function parseFile(name, text) {
+    const m = /\.([a-z0-9]+)$/i.exec(String(name || ''));
+    const ext = m ? m[1].toLowerCase() : '';
+    if (!FILE_EXTS.includes(ext)) {
+      throw new Error(`只支持 S19 / HEX 文件（${FILE_EXTS.map(x => '.' + x).join(' / ')}），这个文件${ext ? '是 .' + ext : '没有扩展名'}`);
+    }
+    if (typeof text !== 'string') throw new Error('不是文本格式的 S19 / HEX 文件');
+    const body = text.replace(/^\uFEFF/, '').trimStart();
+    if (/[\x00-\x08\x0E-\x1F]/.test(body.slice(0, 2000))) throw new Error('文件里有二进制内容，不像 S19 / HEX 文本');
+    if (body[0] === ':') return { type: 'hex', segs: parseIHEX(text) };
+    if (/^S[0-9]/.test(body)) return { type: 's19', segs: parseS19(text) };
+    throw new Error('文件内容不是 S19 / HEX 格式（开头应是 S1 / S3 记录或 ":"）');
+  }
+
   const total = segs => segs.reduce((s, x) => s + x.data.length, 0);
-  const API = { parse, parseIHEX, parseS19, toSegments, total };
+  const API = { parse, parseFile, parseIHEX, parseS19, toSegments, total };
   if (typeof module !== 'undefined') module.exports = API;
   if (typeof window !== 'undefined') window.FlashFile = API;
 })();
