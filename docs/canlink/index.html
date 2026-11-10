@@ -157,7 +157,7 @@
 
 
   <div class="card">
-    <h2>保存 ASC</h2>
+    <h2>保存数据</h2>
     <div class="row">
       <select id="range" aria-label="保存范围"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select>
       <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:120px">
@@ -168,11 +168,12 @@
         <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
     </div>
     <div class="row">
+      <select id="recFmt" aria-label="保存格式"><option value="asc">ASC</option><option value="blf">BLF</option></select>
       <button class="b p" id="btnSave" disabled>下载</button>
       <button class="b" id="btnShare" disabled>分享</button>
       <button class="b" id="btnView" disabled>查看</button>
     </div>
-    <div class="hint">ASC 可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）；浏览器不支持文件分享时，会自动改成下载。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
+    <div class="hint">下载的数据可以直接用 CANalyzer、SEF 网站打开。分享会调起手机的分享菜单（企业微信等）；浏览器不支持文件分享时，会自动改成下载。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
   </div>
 
   <details class="card" id="busBox">

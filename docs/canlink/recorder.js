@@ -90,6 +90,21 @@ const Recorder = (() => {
       flush();
       return new Blob(parts, { type: 'text/plain' });
     }
+
+    // 生成 BLF（Blob）。from/to：秒；时间从 from 开始重新计（与 toASC 一致）。标记写成 BLF 全局标记。
+    async toBLF(from = 0, to = Infinity) {
+      const base = Number.isFinite(from) && from > 0 ? from : 0;
+      const startAbs = Math.floor((this.startDate.getTime() / 1000 + base) * 1000) / 1000;
+      const marks = this.marks.filter(m => m.t >= from && m.t <= to);
+      let mi = 0, lastT = 0;
+      const w = new BLF.Writer(startAbs);
+      await this.forEach(from, to, f => {
+        while (mi < marks.length && marks[mi].t <= f.t) { w.marker(marks[mi].t - base, marks[mi].label); mi++; }
+        w.frame(f.t - base, f); lastT = f.t - base;
+      });
+      while (mi < marks.length) { w.marker(marks[mi].t - base, marks[mi].label); mi++; }
+      return w.finish(lastT);
+    }
   }
 
   // ---- Vector ASC 文本 ----
@@ -130,7 +145,112 @@ const Recorder = (() => {
     },
   };
 
+  // ---- Vector BLF 二进制日志 ----
+  // 布局与 python-can 的 BLFWriter 对齐（文件头 / 对象头 V1 纳秒时间戳 / 128KB 一个 LogContainer、
+  // zlib 压缩），CANalyzer、python-can、SEF 的 canlog.js 都能读。浏览器里用 CompressionStream 压缩，
+  // 没有这个能力时退回不压缩（容器方式 0，仍是合法 BLF）。
+  const BLF = (() => {
+    const MAXC = 128 * 1024;
+    const sig = (dv, off, txt) => { for (let i = 0; i < 4; i++) dv.setUint8(off + i, txt.charCodeAt(i)); };
+    function sysTime(epochSec) {
+      if (!epochSec || epochSec < 631152000) return [0, 0, 0, 0, 0, 0, 0, 0];
+      const d = new Date(Math.round(epochSec * 1000));
+      return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDay(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()];
+    }
+    async function deflate(data) {
+      try {
+        if (typeof CompressionStream !== 'undefined') {
+          const stream = new Blob([data]).stream().pipeThrough(new CompressionStream('deflate'));
+          return new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+      } catch (e) { /* 退回不压缩 */ }
+      try { if (typeof require !== 'undefined') return new Uint8Array(require('zlib').deflateSync(data)); } catch (e) { /* 退回不压缩 */ }
+      return null;
+    }
+    class Writer {
+      constructor(startAbs) { this.startAbs = startAbs; this.pieces = []; this.len = 0; this.count = 0; }
+      _obj(type, data, tsSec) {
+        const dv = new DataView(new ArrayBuffer(32));
+        sig(dv, 0, 'LOBJ');
+        dv.setUint16(4, 32, true); dv.setUint16(6, 1, true);
+        dv.setUint32(8, 32 + data.length, true); dv.setUint32(12, type, true);
+        dv.setUint32(16, 2, true); // 时间戳单位：纳秒
+        dv.setBigUint64(24, BigInt(Math.max(0, Math.round(tsSec * 1e9))), true);
+        this.pieces.push(new Uint8Array(dv.buffer), data);
+        let n = 32 + data.length;
+        const pad = data.length % 4;
+        if (pad) { this.pieces.push(new Uint8Array(pad)); n += pad; }
+        this.len += n; this.count++;
+      }
+      frame(t, f) {
+        const flags = (f.tx ? 1 : 0) | (f.rtr ? 0x80 : 0);
+        const id = (f.id >>> 0) | (f.ext ? 0x80000000 : 0);
+        if (f.fd) {
+          // CanFdMessage 84 字节：通道/标志/DLC/ID/帧长/位计数(1字节)/FD标志@13/有效字节数@14/数据@20
+          const dv = new DataView(new ArrayBuffer(84));
+          dv.setUint16(0, f.ch || 1, true); dv.setUint8(2, flags); dv.setUint8(3, f.dlc);
+          dv.setUint32(4, id, true);
+          dv.setUint8(13, 1 | (f.brs ? 2 : 0) | (f.esi ? 4 : 0)); // EDL | BRS | ESI
+          dv.setUint8(14, f.data.length);
+          new Uint8Array(dv.buffer).set(f.data.subarray(0, 64), 20);
+          this._obj(100, new Uint8Array(dv.buffer), t);
+        } else {
+          const dv = new DataView(new ArrayBuffer(16));
+          dv.setUint16(0, f.ch || 1, true); dv.setUint8(2, flags); dv.setUint8(3, f.dlc);
+          dv.setUint32(4, id, true);
+          new Uint8Array(dv.buffer).set(f.data.subarray(0, 8), 8);
+          this._obj(1, new Uint8Array(dv.buffer), t);
+        }
+      }
+      marker(t, label) {
+        const enc = new TextEncoder();
+        const g = enc.encode(String(label || '')), m = enc.encode('canlink'), c = enc.encode('Added by canlink');
+        const dv = new DataView(new ArrayBuffer(40));
+        dv.setUint32(4, 0xFFFFFF, true); dv.setUint32(8, 0xFF3300, true);
+        dv.setUint32(16, g.length, true); dv.setUint32(20, m.length, true); dv.setUint32(24, c.length, true);
+        const data = new Uint8Array(40 + g.length + m.length + c.length);
+        data.set(new Uint8Array(dv.buffer)); data.set(g, 40); data.set(m, 40 + g.length); data.set(c, 40 + g.length + m.length);
+        this._obj(96, data, t);
+      }
+      async finish(lastT) {
+        const all = new Uint8Array(this.len);
+        let o = 0;
+        for (const p of this.pieces) { all.set(p, o); o += p.length; }
+        const containers = [];
+        let fileSize = 144, uSize = 144, off = 0;
+        while (off < all.length) {
+          const chunk = all.subarray(off, off + MAXC);
+          const comp = await deflate(chunk);
+          const payload = comp || chunk, method = comp ? 2 : 0;
+          const objSize = 32 + payload.length;
+          const dv = new DataView(new ArrayBuffer(32));
+          sig(dv, 0, 'LOBJ');
+          dv.setUint16(4, 16, true); dv.setUint16(6, 1, true);
+          dv.setUint32(8, objSize, true); dv.setUint32(12, 10, true);
+          dv.setUint16(16, method, true); dv.setUint32(24, chunk.length, true);
+          containers.push(new Uint8Array(dv.buffer), payload);
+          const pad = objSize % 4;
+          if (pad) containers.push(new Uint8Array(pad));
+          fileSize += objSize + pad; uSize += 32 + chunk.length;
+          off += chunk.length;
+        }
+        const fh = new DataView(new ArrayBuffer(144));
+        sig(fh, 0, 'LOGG');
+        fh.setUint32(4, 144, true); fh.setUint8(8, 5);
+        fh.setUint8(12, 2); fh.setUint8(13, 6); fh.setUint8(14, 8); fh.setUint8(15, 1);
+        fh.setBigUint64(16, BigInt(fileSize), true);
+        fh.setBigUint64(24, BigInt(uSize), true);
+        fh.setUint32(32, this.count, true);
+        sysTime(this.startAbs).forEach((v, i) => fh.setUint16(40 + i * 2, v, true));
+        sysTime(this.startAbs + (lastT || 0)).forEach((v, i) => fh.setUint16(56 + i * 2, v, true));
+        return new Blob([new Uint8Array(fh.buffer), ...containers], { type: 'application/octet-stream' });
+      }
+    }
+    return { Writer };
+  })();
+
   Recorder.ASC = ASC;
+  Recorder.BLF = BLF;
   return Recorder;
 })();
 if (typeof module !== 'undefined') module.exports = Recorder;
