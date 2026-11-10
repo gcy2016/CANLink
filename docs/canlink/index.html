@@ -101,6 +101,7 @@
     .sendrow { grid-template-columns: auto minmax(64px, 100px) 1fr auto; gap: 6px; }
     nav button { font-size: 14px; min-width: 56px; }
   }
+  .tgl.off { opacity: .45; }
 </style>
 </head>
 <body>
@@ -224,6 +225,7 @@
     </div>
     <div class="row">
       <label class="tgl"><input type="checkbox" id="cFd" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
+      <label class="tgl"><input type="checkbox" id="cBrs" checked><span class="t-off">BRS 关</span><span class="t-on">BRS 开</span></label>
       <label class="tgl"><input type="checkbox" id="cExt"><span class="t-off">标准帧（11 位 ID）</span><span class="t-on">扩展帧（29 位 ID）</span></label>
     </div>
     <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器。保密内容不进仓库。</div>
@@ -302,7 +304,8 @@
     <div class="row">
       <label class="tgl"><input type="checkbox" id="sExt"><span class="t-off">标准帧</span><span class="t-on">扩展帧</span></label>
       <label class="tgl"><input type="checkbox" id="sFd"><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
-      <span class="hint">CANFD 自动带 BRS</span>
+      <label class="tgl"><input type="checkbox" id="sBrs" checked><span class="t-off">BRS 关</span><span class="t-on">BRS 开</span></label>
+      <span class="hint">BRS 只对 CANFD 有效</span>
     </div>
     <div class="row" style="margin-top:6px">
       <input type="text" id="rawData" class="mono" placeholder="原始数据，如 02 10 03" style="flex:1;min-width:160px">
