@@ -1031,6 +1031,7 @@
     const t = Math.max(0, (S.lastT || 0) - S.recT0);
     S.rec.mark(t);
     log(`标记 ${S.rec.marks.length}：${t.toFixed(3)} s`);
+    updateMarks();
     updateRecInfo();
   };
   const fmtDur = s => { s = Math.floor(s); return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
@@ -1041,6 +1042,7 @@
     $('rCnt').textContent = S.rec.count.toLocaleString();
     const has = S.rec.count > 0 && !S.recording;  // 录制中下载 / 分享 / 查看都置灰
     $('btnSave').disabled = !has; $('btnView').disabled = !has; $('btnShare').disabled = !has;
+    $('btnMarks').disabled = !(has && S.rec.marks.length);
     $('rMarks').textContent = S.rec.marks.length ? S.rec.marks.map(m => m.t.toFixed(1) + 's').join('，') : '无';
   }
   function updateMarks() {
@@ -1049,7 +1051,53 @@
     opts.push('<option value="end">结尾</option>');
     $('mFrom').innerHTML = opts.join(''); $('mTo').innerHTML = opts.join('');
     $('mTo').value = 'end';
+    renderMarkList();
   }
+  // 标记备注编辑：标签即备注，进 BLF 标记文字与 ASC 注释；留空则用默认 Mark N。
+  function renderMarkList() {
+    const box = $('markList');
+    if (!S.rec || !S.rec.marks.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="hint" style="margin-top:8px">标记备注（下载前可改）：</div>' +
+      S.rec.marks.map((m, i) => {
+        const def = `Mark ${i + 1}`, custom = m.label && m.label !== def;
+        return `<div class="mkrow"><span class="mkt">标记 ${i + 1} · ${m.t.toFixed(3)}s</span>` +
+          `<input type="text" data-mk="${i}" value="${custom ? esc(m.label) : ''}" placeholder="${def}（点此填备注）"></div>`;
+      }).join('');
+    box.querySelectorAll('input[data-mk]').forEach(inp => inp.addEventListener('change', () => {
+      const i = +inp.dataset.mk, v = inp.value.trim();
+      if (S.rec && S.rec.marks[i]) S.rec.marks[i].label = v || `Mark ${i + 1}`;
+    }));
+  }
+  function marksFileName() { return fileName().replace(/\.(asc|blf)$/i, '') + '_marks.txt'; }
+  function marksListText() {
+    const d = S.rec.startDate, p = v => String(v).padStart(2, '0');
+    const ds = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    const base = fileName().replace(/\.(asc|blf)$/i, '');
+    const lines = ['canlink 标记清单', `录制开始：${ds}`, `数据文件：${base}.blf / .asc`, `共 ${S.rec.marks.length} 个标记`, ''];
+    S.rec.marks.forEach((m, i) => lines.push(`${i + 1}. ${m.t.toFixed(3)}s — ${m.label}`));
+    lines.push('', '在 CANalyzer 里按 ID 1FFFFFF0 过滤可逐个跳到标记帧，序号与本清单一致。');
+    return lines.join('\n') + '\n';
+  }
+  let marksFile = null;
+  $('btnMarks').onclick = () => {
+    if (!S.rec || !S.rec.marks.length) return;
+    const text = marksListText();
+    marksFile = new File([text], marksFileName(), { type: 'text/plain' });
+    $('marksText').textContent = text;
+    $('marksMsg').textContent = '';
+    $('marksModal').hidden = false;
+  };
+  $('btnMarksClose').onclick = () => { $('marksModal').hidden = true; };
+  $('marksModal').addEventListener('click', e => { if (e.target === $('marksModal')) $('marksModal').hidden = true; });
+  $('btnMarksDl').onclick = () => { if (marksFile) { downloadFile(marksFile); log(`已下载标记清单 ${marksFile.name}`); } };
+  $('btnMarksShare').onclick = async () => {
+    if (!marksFile) return;
+    let can = false;
+    try { can = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [marksFile] })); } catch (e) { can = false; }
+    if (!can) { downloadFile(marksFile); $('marksMsg').textContent = '这个浏览器不能直接分享文件，已改为下载。'; return; }
+    try { await navigator.share({ files: [marksFile], title: marksFile.name }); }
+    catch (e) { if (e.name !== 'AbortError') { downloadFile(marksFile); $('marksMsg').textContent = '分享没有成功，已改为下载。'; } }
+  };
   $('range').onchange = () => {
     const v = $('range').value;
     $('fMarks').hidden = v !== 'marks'; $('fLast').hidden = v !== 'last'; $('fCustom').hidden = v !== 'custom';

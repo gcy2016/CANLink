@@ -216,7 +216,7 @@ const Recorder = (() => {
       }
       marker(t, label) {
         const enc = new TextEncoder();
-        const g = enc.encode(String(label || '')), m = enc.encode('canlink'), c = enc.encode('Added by canlink');
+        const g = enc.encode(String(label || '')), m = enc.encode('canlink'), c = enc.encode(String(label || ''));
         const dv = new DataView(new ArrayBuffer(40));
         dv.setUint32(4, 0xFFFFFF, true); dv.setUint32(8, 0xFF3300, true);
         dv.setUint32(16, g.length, true); dv.setUint32(20, m.length, true); dv.setUint32(24, c.length, true);

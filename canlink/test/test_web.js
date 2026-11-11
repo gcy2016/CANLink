@@ -73,18 +73,23 @@ const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('�
       const t = i * 0.001;
       rec.push(t, f); frames.push([t, f]);
       if (i === 100) rec.mark(t);
+      if (i === 200) rec.mark(t, '事件A');
     }
     const blob = await rec.toASC();
     const text = await blob.text();
     assert(/^date \w{3} \w{3} \d\d /.test(text));
     assert(text.includes('// 0.100000 Mark 1'));
+    assert(text.includes('// 0.200000 事件A'));
     const fr = await CanLog.read('x.asc', new TextEncoder().encode(text));
-    assert.strictEqual(fr.n, frames.length + 1);   // 多出一帧标记帧（Mark 1 在第 100 帧处）
+    assert.strictEqual(fr.n, frames.length + 2);   // 多出两帧标记帧（第 100、200 帧处各一）
     assert.strictEqual(fr.id[100] & 0x1FFFFFFF, 0x1FFFFFF0);
     assert(Math.abs(fr.t[100] - 0.1) < 1e-6);
     assert.deepStrictEqual(Array.from(fr.bytes(100)), [1, 0, 0xA5, 0, 100, 0, 0, 0]);
+    assert.strictEqual(fr.id[201] & 0x1FFFFFFF, 0x1FFFFFF0);
+    assert(Math.abs(fr.t[201] - 0.2) < 1e-6);
+    assert.deepStrictEqual(Array.from(fr.bytes(201)), [2, 0, 0xA5, 0, 200, 0, 0, 0]);
     for (const k of [0, 1, 3, 12345, 69999]) {
-      const j = k < 100 ? k : k + 1;
+      const j = k < 100 ? k : k < 200 ? k + 1 : k + 2;
       const [t, f] = frames[k];
       assert(Math.abs(fr.t[j] - t) < 1e-6, `t ${k}`);
       assert.strictEqual(fr.id[j] & 0x1FFFFFFF, f.id);
