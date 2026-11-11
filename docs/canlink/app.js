@@ -551,12 +551,13 @@
   }
   // 发一条 UDS 请求并把结果显示出来；返回引擎结果
   async function udsReq(payload, opt = {}) {
-    const why = diagReady(); if (why) { diagLog('发不了：' + why); updateSendHint(); return { blocked: why }; }
+    const why = diagReady(); if (why) { diagLog('发不了：' + why); log('诊断没发出去：' + why, 'bad'); updateSendHint(); return { blocked: why }; }
     const c = curCfg();
     const cfg = opt.functional ? { ...c, req: c.func } : c;
-    if (opt.functional && isNaN(c.func)) { diagLog('没填功能寻址 ID'); return { blocked: 1 }; }
+    if (opt.functional && isNaN(c.func)) { diagLog('没填功能寻址 ID'); log('诊断没发出去：没填功能寻址 ID', 'bad'); return { blocked: 1 }; }
     const r = await S.tp.request(cfg, Uint8Array.from(payload), { timeout: opt.timeout || 2500 });
     showResp(payload, r, opt);
+    logUds(payload, r);
     return r;
   }
   function showResp(reqBytes, r, opt = {}) {
@@ -572,6 +573,18 @@
     if (!opt.keepList) $('diagOut').innerHTML = h;
     else $('diagOut').innerHTML = h;
   }
+  // 把一次 UDS 问答记进运行日志（导出分析用）。长数据只记前 24 字节；安全访问送 key 的那条不记 key。
+  function logUds(reqBytes, r) {
+    const cut = a => a.length > 24 ? hexs(a.slice(0, 24)) + ` …（共 ${a.length} 字节）` : hexs(a);
+    const reqShown = (reqBytes[0] === 0x27 && reqBytes.length > 2 && reqBytes[1] % 2 === 0)
+      ? hexs(reqBytes.slice(0, 2)) + ' …（key 不记入日志）' : cut(reqBytes);
+    let line = `诊断 → ${reqShown}（${Diag.serviceName(reqBytes[0])}）`;
+    if (r.timeout) line += ' ← 超时无响应';
+    else if (r.error) line += ' ← 出错：' + r.error;
+    else if (r.nrc !== undefined) line += ` ← 否定响应 0x${hx(r.nrc)} ${r.nrcText}`;
+    else if (r.data) line += ` ← ${cut(r.data)}`;
+    log(line, (r.timeout || r.error || r.nrc !== undefined) ? 'bad' : '');
+  }
 
   // 会话 / 复位按钮
   $('diagBtns').addEventListener('click', e => {
@@ -581,11 +594,11 @@
   // 保持在线（循环 3E 80）
   let tpTimer = null;
   $('btnTp').onclick = () => {
-    if (tpTimer) { clearInterval(tpTimer); tpTimer = null; $('btnTp').textContent = '保持在线：关'; $('btnTp').classList.remove('p'); return; }
+    if (tpTimer) { clearInterval(tpTimer); tpTimer = null; $('btnTp').textContent = '保持在线：关'; $('btnTp').classList.remove('p'); log('保持在线：关'); return; }
     if (diagReady()) { udsReq([0x3E, 0x80]); return; }
     udsReq([0x3E, 0x80]);
     tpTimer = setInterval(() => { const c = curCfg(); if (!S.open || S.openSilent) return; S.tp.request(c, Uint8Array.of(0x3E, 0x80), { timeout: 1000 }); }, 2000);
-    $('btnTp').textContent = '保持在线：开（每 2 秒）'; $('btnTp').classList.add('p');
+    $('btnTp').textContent = '保持在线：开（每 2 秒）'; $('btnTp').classList.add('p'); log('保持在线：开（每 2 秒）');
   };
 
   // 安全访问（算法随开屏密码内置载入，不在页面显示；等级固定 1）
@@ -895,6 +908,7 @@
     flashing = true; flashStop = false;
     $('fStart').disabled = true; $('fStop').hidden = false; $('fStop').textContent = '停止';
     $('fLog').innerHTML = ''; $('fBar').style.width = '0'; $('fProg').textContent = '0%';
+    log(`开始刷写：${curCfg().name}（${[flashFiles.driver ? 'Driver：' + $('fDrvName').textContent : '', flashFiles.app ? 'App：' + $('fAppName').textContent : ''].filter(Boolean).join('；')}）`);
     if (needFp) flog('指纹编号来源：' + testerInfo.source);
     renderSteps(flow.steps, -1, '');
     try {
@@ -907,9 +921,9 @@
           onProgress: (frac, text) => { $('fBar').style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; $('fProg').textContent = text || ''; },
         },
       });
-      if (r.ok) { $('fBar').style.width = '100%'; $('fProg').innerHTML = '<span class="good">刷写完成 100%</span>'; }
-      else { $('fProg').innerHTML = '<span class="bad">刷写失败：' + esc(r.error || '') + '</span>'; }
-    } catch (e) { flog('出错：' + e.message, 'bad'); $('fProg').innerHTML = '<span class="bad">出错：' + esc(e.message) + '</span>'; }
+      if (r.ok) { $('fBar').style.width = '100%'; $('fProg').innerHTML = '<span class="good">刷写完成 100%</span>'; log('刷写完成'); }
+      else { $('fProg').innerHTML = '<span class="bad">刷写失败：' + esc(r.error || '') + '</span>'; log('刷写失败：' + (r.error || ''), 'bad'); }
+    } catch (e) { flog('出错：' + e.message, 'bad'); $('fProg').innerHTML = '<span class="bad">出错：' + esc(e.message) + '</span>'; log('刷写出错：' + e.message, 'bad'); }
     finally { flashing = false; $('fStart').disabled = false; $('fStop').hidden = true; }
   };
   let lastRunIdx = -1;
@@ -929,19 +943,25 @@
     const data = parseHex(dataText);
     return { id, ext: !!SC.ext || id > 0x7FF, fd: !!SC.fd, brs: !!SC.fd && SC.brs !== false, data };
   }
+  function logSend(f, cycMs) {
+    log(`${cycMs ? `循环发送（每 ${cycMs} ms）` : '发送'} → ${hx(f.id, f.ext ? 8 : 3)}${f.ext ? 'x' : ''} ${f.fd ? 'FD' : 'CAN'} ${hexs(f.data)}`);
+  }
   async function sendData(dataText) {
     if (!S.open || S.openSilent) throw new Error('通道没打开，或者是只听模式');
-    rawSendFrame(buildFrame(dataText));
+    const f = buildFrame(dataText);
+    rawSendFrame(f);
+    return f;
   }
   $('btnRawSend').onclick = () => {
     const v = $('rawData').value;
-    if (cyclic.has('raw')) { clearInterval(cyclic.get('raw')); cyclic.delete('raw'); $('btnRawSend').textContent = '发送'; return; }
+    if (cyclic.has('raw')) { clearInterval(cyclic.get('raw')); cyclic.delete('raw'); $('btnRawSend').textContent = '发送'; log('已停止循环发送'); return; }
     const ms = +SC.cyc;
     if (ms && ms >= 1 && /\S/.test(v)) {
       try { buildFrame(v); } catch (e) { diagLog(e.message); return; }
-      cyclic.set('raw', setInterval(() => sendData(v).catch(err => { clearInterval(cyclic.get('raw')); cyclic.delete('raw'); $('btnRawSend').textContent = '发送'; diagLog('循环停止：' + err.message); }), ms));
+      cyclic.set('raw', setInterval(() => sendData(v).catch(err => { clearInterval(cyclic.get('raw')); cyclic.delete('raw'); $('btnRawSend').textContent = '发送'; diagLog('循环停止：' + err.message); log('循环发送停止：' + err.message, 'bad'); }), ms));
       $('btnRawSend').textContent = '停止循环';
-    } else sendData(v).catch(err => diagLog('发送失败：' + err.message));
+      logSend(buildFrame(v), ms);
+    } else sendData(v).then(f => logSend(f)).catch(err => { diagLog('发送失败：' + err.message); log('发送失败：' + err.message, 'bad'); });
   };
   function stopCyclic() { for (const t of cyclic.values()) clearInterval(t); cyclic.clear(); const b = $('btnRawSend'); if (b) b.textContent = '发送'; }
 
