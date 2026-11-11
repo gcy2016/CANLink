@@ -1,6 +1,6 @@
 // 离线缓存：第一次打开时把网页文件存到本机；以后先尝试联网取新版本（3 秒没回应就用本机的），
 // 联不上网、GitHub 打不开时也能打开。改了网页文件后把 VERSION 加 1。
-const VERSION = 'canlink-25';
+const VERSION = 'canlink-26';
 const FILES = ['./', 'index.html', 'app.js', 'slcan.js', 'recorder.js', 'transport.js', 'demo.js', 'dfu.js',
   'diag.js', 'flashfile.js', 'flash.js', 'secrets.enc.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'fw/vdlink-1.0.bin',
   'viewer/', 'viewer/index.html', 'viewer/canlog.js', 'viewer/plot.js', 'viewer/ai.js', 'viewer/uds.js', 'viewer/dbc.js', 'viewer/qn.js',

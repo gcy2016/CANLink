@@ -1001,6 +1001,7 @@
   // ---------------- 录制 ----------------
   function startRec() {
     S.rec = new Recorder();
+    updateMarks();   // 新录制从零开始：清掉上一段的标记列表与范围选项，别等停录才刷新
     S.recording = true;
     S.recT0 = S.lastT;
     S.saved = false;
