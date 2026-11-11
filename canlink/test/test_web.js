@@ -79,14 +79,18 @@ const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('�
     assert(/^date \w{3} \w{3} \d\d /.test(text));
     assert(text.includes('// 0.100000 Mark 1'));
     const fr = await CanLog.read('x.asc', new TextEncoder().encode(text));
-    assert.strictEqual(fr.n, frames.length);
+    assert.strictEqual(fr.n, frames.length + 1);   // 多出一帧标记帧（Mark 1 在第 100 帧处）
+    assert.strictEqual(fr.id[100] & 0x1FFFFFFF, 0x1FFFFFF0);
+    assert(Math.abs(fr.t[100] - 0.1) < 1e-6);
+    assert.deepStrictEqual(Array.from(fr.bytes(100)), [1, 0, 0xA5, 0, 100, 0, 0, 0]);
     for (const k of [0, 1, 3, 12345, 69999]) {
+      const j = k < 100 ? k : k + 1;
       const [t, f] = frames[k];
-      assert(Math.abs(fr.t[k] - t) < 1e-6, `t ${k}`);
-      assert.strictEqual(fr.id[k] & 0x1FFFFFFF, f.id);
-      assert.strictEqual(!!(fr.fl[k] & 1), f.tx);
-      assert.strictEqual(!!(fr.fl[k] & 2), f.fd);
-      assert.deepStrictEqual(Array.from(fr.bytes(k)), Array.from(f.data));
+      assert(Math.abs(fr.t[j] - t) < 1e-6, `t ${k}`);
+      assert.strictEqual(fr.id[j] & 0x1FFFFFFF, f.id);
+      assert.strictEqual(!!(fr.fl[j] & 1), f.tx);
+      assert.strictEqual(!!(fr.fl[j] & 2), f.fd);
+      assert.deepStrictEqual(Array.from(fr.bytes(j)), Array.from(f.data));
     }
     const seg = await (await rec.toASC(10, 20)).text();
     const fr2 = await CanLog.read('y.asc', new TextEncoder().encode(seg));
@@ -111,14 +115,18 @@ const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('�
     const ab = await blob.arrayBuffer();
     assert.strictEqual(String.fromCharCode(...new Uint8Array(ab).subarray(0, 4)), 'LOGG');
     const fr = await CanLog.read('x.blf', ab);
-    assert.strictEqual(fr.n, frames.length);
+    assert.strictEqual(fr.n, frames.length + 1);   // 多出一帧标记帧（Mark X，t=0.0035，在第 4 帧之前）
+    assert.strictEqual(fr.id[4] & 0x1FFFFFFF, 0x1FFFFFF0);
+    assert(Math.abs(fr.t[4] - 0.0035) < 1e-6);
+    { const mb = Array.from(fr.bytes(4)); assert.deepStrictEqual(mb.slice(0, 4), [1, 0, 0xA5, 0]); assert(Math.abs((mb[4] | (mb[5] << 8) | (mb[6] << 16) | (mb[7] << 24)) - 3.5) <= 1); }
     for (let k = 0; k < frames.length; k++) {
+      const j = k < 4 ? k : k + 1;
       const [t, f] = frames[k];
-      assert(Math.abs(fr.t[k] - t) < 1e-6, `t ${k}`);
-      assert.strictEqual(fr.id[k] & 0x1FFFFFFF, f.id);
-      assert.strictEqual(!!(fr.fl[k] & 1), f.tx);
-      assert.strictEqual(!!(fr.fl[k] & 2), f.fd);
-      assert.deepStrictEqual(Array.from(fr.bytes(k)), Array.from(f.data));
+      assert(Math.abs(fr.t[j] - t) < 1e-6, `t ${k}`);
+      assert.strictEqual(fr.id[j] & 0x1FFFFFFF, f.id);
+      assert.strictEqual(!!(fr.fl[j] & 1), f.tx);
+      assert.strictEqual(!!(fr.fl[j] & 2), f.fd);
+      assert.deepStrictEqual(Array.from(fr.bytes(j)), Array.from(f.data));
     }
     // 大录制跨 128KB 容器边界
     const big = new Recorder();

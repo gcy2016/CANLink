@@ -5,6 +5,17 @@ const Recorder = (() => {
   const HDR = 16;                               // 每帧头：t(8) id(4) len(1) flags(1) ch(1) dlc(1)
   // flags：1=发送 2=CAN FD 4=远程帧 8=BRS 16=扩展帧 32=ESI
 
+  const MARK_ID = 0x1FFFFFF0;   // 标记帧 ID（29 位扩展帧）。CANalyzer 离线不导入文件里的标记，
+                                // 改在标记时刻记一帧普通报文，Trace 里按 ID 过滤即可定位。
+  function markerFrame(t, no, ch) {   // t：相对秒；no：标记序号（从 1）；ch：跟随最近一帧的通道
+    const data = new Uint8Array(8);
+    const dv = new DataView(data.buffer);
+    dv.setUint16(0, no, true);                    // B0–B1 标记序号（小端）
+    data[2] = 0xA5;                               // B2 签名；B3 = 0
+    dv.setUint32(4, Math.round(t * 1000), true);  // B4–B7 标记时刻（相对录制开始的毫秒，小端）
+    return { id: MARK_ID, ext: true, fd: false, tx: false, rtr: false, brs: false, esi: false, ch: ch || 1, dlc: 8, data };
+  }
+
   class Recorder {
     constructor() {
       this.blobs = [];           // 已封存的块：{ blob, n, t0, t1 }
@@ -80,29 +91,30 @@ const Recorder = (() => {
       const base = Number.isFinite(from) && from > 0 ? from : 0;
       const marks = this.marks.filter(m => m.t >= from && m.t <= to);
       let mi = 0;
+      let lastCh = 1;
       await this.forEach(from, to, f => {
-        while (mi < marks.length && marks[mi].t <= f.t) { buf += ASC.comment(marks[mi].t - base, marks[mi].label); mi++; }
-        buf += ASC.line(f.t - base, f);
+        while (mi < marks.length && marks[mi].t <= f.t) { const rt = marks[mi].t - base; buf += ASC.comment(rt, marks[mi].label); buf += ASC.line(rt, markerFrame(rt, mi + 1, lastCh)); mi++; }
+        buf += ASC.line(f.t - base, f); lastCh = f.ch || 1;
         if (buf.length > 1 << 20) flush();
       });
-      while (mi < marks.length) { buf += ASC.comment(marks[mi].t - base, marks[mi].label); mi++; }
+      while (mi < marks.length) { const rt = marks[mi].t - base; buf += ASC.comment(rt, marks[mi].label); buf += ASC.line(rt, markerFrame(rt, mi + 1, lastCh)); mi++; }
       buf += 'End TriggerBlock\n';
       flush();
       return new Blob(parts, { type: 'text/plain' });
     }
 
-    // 生成 BLF（Blob）。from/to：秒；时间从 from 开始重新计（与 toASC 一致）。标记写成 BLF 全局标记。
+    // 生成 BLF（Blob）。from/to：秒；时间从 from 开始重新计（与 toASC 一致）。标记写成 BLF 全局标记，并附一帧标记帧。
     async toBLF(from = 0, to = Infinity) {
       const base = Number.isFinite(from) && from > 0 ? from : 0;
       const startAbs = Math.floor((this.startDate.getTime() / 1000 + base) * 1000) / 1000;
       const marks = this.marks.filter(m => m.t >= from && m.t <= to);
-      let mi = 0, lastT = 0;
+      let mi = 0, lastT = 0, lastCh = 1;
       const w = new BLF.Writer(startAbs);
       await this.forEach(from, to, f => {
-        while (mi < marks.length && marks[mi].t <= f.t) { w.marker(marks[mi].t - base, marks[mi].label); mi++; }
-        w.frame(f.t - base, f); lastT = f.t - base;
+        while (mi < marks.length && marks[mi].t <= f.t) { const rt = marks[mi].t - base; w.marker(rt, marks[mi].label); w.frame(rt, markerFrame(rt, mi + 1, lastCh)); mi++; }
+        w.frame(f.t - base, f); lastT = f.t - base; lastCh = f.ch || 1;
       });
-      while (mi < marks.length) { w.marker(marks[mi].t - base, marks[mi].label); mi++; }
+      while (mi < marks.length) { const rt = marks[mi].t - base; w.marker(rt, marks[mi].label); w.frame(rt, markerFrame(rt, mi + 1, lastCh)); mi++; }
       return w.finish(lastT);
     }
   }
