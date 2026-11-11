@@ -598,7 +598,7 @@
     if (diagReady()) { udsReq([0x3E, 0x80]); return; }
     udsReq([0x3E, 0x80]);
     tpTimer = setInterval(() => { const c = curCfg(); if (!S.open || S.openSilent) return; S.tp.request(c, Uint8Array.of(0x3E, 0x80), { timeout: 1000 }); }, 2000);
-    $('btnTp').textContent = '保持在线：开（每 2 秒）'; $('btnTp').classList.add('p'); log('保持在线：开（每 2 秒）');
+    $('btnTp').textContent = '保持在线：开'; $('btnTp').classList.add('p'); log('保持在线：开（每 2 秒）');
   };
 
   // 安全访问（算法随开屏密码内置载入，不在页面显示；等级固定 1）
@@ -1063,7 +1063,7 @@
     return [0, end];
   }
   function fileName() {
-    const fmt = $('recFmt') ? $('recFmt').value : 'asc';
+    const fmt = $('recFmt') ? $('recFmt').value : 'blf';
     const n = $('recName').value.trim().replace(/[\\/:*?"<>|\s]+/g, '_');
     const d = S.rec.startDate, p = v => String(v).padStart(2, '0');
     const def = `can_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
@@ -1071,7 +1071,7 @@
   }
   async function makeFile() {
     const [a, b] = saveRange();
-    const fmt = $('recFmt') ? $('recFmt').value : 'asc';
+    const fmt = $('recFmt') ? $('recFmt').value : 'blf';
     if (fmt === 'blf') {
       const blob = await S.rec.toBLF(a, b);
       return new File([blob], fileName(), { type: 'application/octet-stream' });

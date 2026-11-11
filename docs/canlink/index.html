@@ -168,7 +168,7 @@
         <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
     </div>
     <div class="row">
-      <select id="recFmt" aria-label="保存格式"><option value="asc">ASC</option><option value="blf">BLF</option></select>
+      <select id="recFmt" aria-label="保存格式"><option value="blf" selected>BLF</option><option value="asc">ASC</option></select>
       <button class="b p" id="btnSave" disabled>下载</button>
       <button class="b" id="btnShare" disabled>分享</button>
       <button class="b" id="btnView" disabled>查看</button>
@@ -236,6 +236,11 @@
     <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器。保密内容不进仓库。</div>
   </div>
 
+  <div class="card sticktop">
+    <h2>诊断应答</h2>
+    <div id="diagOut" class="hint">点下面会话区的按钮，或在“手动发送”里发诊断指令，结果显示在这里。</div>
+  </div>
+
   <div class="card">
     <h2>会话 / 安全 / 复位</h2>
     <div class="row" id="diagBtns">
@@ -250,11 +255,6 @@
       <button class="b p" id="btnSec">安全访问解锁</button>
       <span class="hint" id="secSt"></span>
     </div>
-  </div>
-
-  <div class="card sticktop">
-    <h2>诊断应答</h2>
-    <div id="diagOut" class="hint">点上面的按钮，或在下面“手动发送”里发诊断指令，结果显示在这里。</div>
   </div>
 
   <div class="card">
