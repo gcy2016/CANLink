@@ -18,13 +18,19 @@
   };
   const SCROLL_MAX = 400;
 
+  const LOG_LINES = [];               // 全程日志（导出用，上限 1 万条）；界面上只显示最近 60 条
   function log(msg, cls) {
-    const el = $('log');
     const t = new Date().toTimeString().slice(0, 8);
+    LOG_LINES.push(`${t} ${msg}`);
+    if (LOG_LINES.length > 10000) LOG_LINES.splice(0, LOG_LINES.length - 10000);
+    const el = $('log');
     el.insertAdjacentHTML('beforeend', `<div class="${cls || ''}">${t} ${esc(msg)}</div>`);
     while (el.childNodes.length > 60) el.removeChild(el.firstChild);
     el.scrollTop = el.scrollHeight;
   }
+  // 页面自身的报错也记进日志，实测出问题时导出就能看到
+  window.addEventListener('error', e => { try { log(`页面错误：${e.message || e.type}`, 'bad'); } catch (_) { /* ignore */ } });
+  window.addEventListener('unhandledrejection', e => { try { log(`未处理的异常：${(e.reason && e.reason.message) || e.reason}`, 'bad'); } catch (_) { /* ignore */ } });
 
   // ---------------- 页签 ----------------
   $('tabs').addEventListener('click', e => {
@@ -1125,6 +1131,25 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = 'can_tool_settings.json';
     document.body.appendChild(a); a.click(); a.remove();
+  };
+  $('btnLog').onclick = () => {
+    const p = v => String(v).padStart(2, '0');
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+    const head = [
+      'canlink 运行日志',
+      `导出时间：${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`,
+      `页面：${location.href}`,
+      `浏览器：${navigator.userAgent}`,
+      `屏幕：${screen.width}×${screen.height}`,
+      `WebUSB：${navigator.usb ? '支持' : '不支持'}；Web Serial：${navigator.serial ? '支持' : '不支持'}`,
+      `通道设置：标称 ${S.nominal / 1000}k，CANFD ${S.fdOn ? `开（数据段 ${S.data / 1e6}M）` : '关'}，只听 ${S.silent ? '开' : '关'}`,
+      `日志条数：${LOG_LINES.length}`,
+      '----',
+    ];
+    const blob = new Blob([head.join('\n') + '\n' + LOG_LINES.join('\n') + '\n'], { type: 'text/plain' });
+    downloadFile(new File([blob], `canlink-log-${stamp}.txt`, { type: 'text/plain' }));
+    log('已导出运行日志');
   };
   $('btnImport').onclick = () => $('importFile').click();
   $('importFile').onchange = async () => {
