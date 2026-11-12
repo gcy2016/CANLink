@@ -626,14 +626,22 @@ function analyze() {
     `<div><small>帧数</small>${LOG.n}${fd ? `（FD ${fd}）` : ''}</div><div><small>通道</small>${chs || '-'}</div>` +
     `<div><small>报文 ID</small>${LOG.byId.size} 个</div>` +
     `<div><small>DBC 能解析</small>${DBC ? `${[...known].filter(id => LOG.byId.has(id)).length} 个 ID / ${LOG.n ? Math.round(mfr / LOG.n * 100) : 0}% 帧` : '未加载 DBC'}</div></div>`;
+  // 报文可能先到（从“录制”页点“查看”过来），车型后选：这里也放一个车型下拉框，不用滚回最上面
+  const mdlSel = DB.models.length > 1 ? `车型：<select id="mdlSel">${DB.models.map((m, i) =>
+    `<option value="${i}" ${m === model ? 'selected' : ''}>${esc(m.model)}</option>`).join('')}</select>　` : '';
   const dbcs = builtinDbc();
+  if (!dbcs && mdlSel) h += `<p class="hint">${mdlSel}</p>`;
   if (dbcs) {
     const cur = dbcPick || (model && model.dbc) || '';
-    h += `<p class="hint">使用 DBC：<select id="dbcSel">${cur in dbcs ? '' : '<option value="">（未选）</option>'}${Object.keys(dbcs).map(n =>
+    h += `<p class="hint">${mdlSel}使用 DBC：<select id="dbcSel">${cur in dbcs ? '' : '<option value="">（未选）</option>'}${Object.keys(dbcs).map(n =>
       `<option ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>（默认按车型自动选择）</p>`;
     const best = Object.keys(dbcs).map(coverage).sort((a, b) => b.fr - a.fr)[0];
     if (best && best.name !== cur && best.fr > mfr * 1.3 && LOG.n)
-      h += `<div class="warn">报文和 <b>${esc(best.name)}</b> 更匹配（能解析 ${Math.round(best.fr / LOG.n * 100)}% 帧），请确认车型是否选对。</div>`;
+    {
+      const ms = UDB ? [] : BUILTIN.models.filter(m => m.dbc === best.name).map(m => m.model);
+      h += `<div class="warn">报文和 <b>${esc(best.name)}</b> 更匹配（能解析 ${Math.round(best.fr / LOG.n * 100)}% 帧），请确认车型是否选对。${
+        ms.length ? '用这份 DBC 的车型：' + esc(ms.join('、')) + '。' : ''}</div>`;
+    }
   } else if (DBC && LOG.n && mfr / LOG.n < 0.3)
     h += `<div class="warn">DBC 只能解析 ${Math.round(mfr / LOG.n * 100)}% 的帧，请确认 DBC 和报文是否属于同一车型 / 网段。</div>`;
   if (DBC && unknown.length)
@@ -643,6 +651,7 @@ function analyze() {
   $('info').innerHTML = h;
   $('rmLog').onclick = clearLog;
   if ($('dbcSel')) $('dbcSel').onchange = e => { dbcPick = e.target.value; analyze(); };
+  if ($('mdlSel')) $('mdlSel').onchange = e => pick(+e.target.value, true);
   show(view);
   $('res').hidden = false;
   renderDTC();
