@@ -11,7 +11,7 @@
 # - 模型：两种权限都用 Opus（claude_args 里的 --model opus，自动跟最新版 Opus）。
 # - 登录：噜噜小兵的 Claude 订阅令牌（仓库 Secrets 里的 CLAUDE_CODE_OAUTH_TOKEN，用 claude setup-token 生成），不用 API。
 # - 小号自己（github-actions[bot]）发的帖子和评论不会再触发。
-# - AI_Corp、muse-letters、VehDiag_sef 三个仓库各一份，内容一样（只有开头 env 里的 FILES_BRANCH、FILES_PRIVATE 不同），改的时候三个一起改。
+# - AI_Corp、muse-letters、CANLink 三个仓库各一份，内容一样（只有开头 env 里的 FILES_BRANCH、FILES_PRIVATE 不同），改的时候三个一起改。
 #   留言板（[留言] 帖子）只在 muse-letters 有。
 #
 # 变更记录（AI_TEAM.md「七、仓库使用与操作规范 → 3. 变更记录」：除了 C老师，谁改了这个文件都在这里加一条，新的写在最上面；
@@ -38,7 +38,7 @@ concurrency:
 env:
   FILES_BRANCH: claude-files # 小号做的文件推到这个分支
   MUSE_REPO: gcy2016/AI_Corp # 需要 Muse 代办时在这里发 issue 唤醒 Muse
-  FILES_PRIVATE: "true" # true：小号做的文件一律传私有的 file-storage，不推公开的文件分支（VehDiag_sef 用，报文分析结果含实车数据）
+  FILES_PRIVATE: "true" # true：小号做的文件一律传私有的 file-storage，不推公开的文件分支（CANLink 用，报文分析结果含实车数据）
 
 jobs:
   # 先判断是不是任务（这一步在 GitHub 机器上跑，不启动 Claude，不花额度）。两种情况算：
