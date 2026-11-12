@@ -104,6 +104,9 @@
   #gate p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
   #gate input { width: 100%; text-align: center; font-size: 18px; letter-spacing: 2px; margin-bottom: 12px; }
   #gate button { width: 100%; padding: 11px; }
+  /* 密码屏默认不渲染；本机没记住密码时才显示（head 里的小脚本给 html 加/不加 haspin 类）。免得已解锁的人每次刷新都先闪一下密码屏。 */
+  #gate { display: none; }
+  html:not(.haspin) #gate { display: flex; }
   .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
   .fbtn { display: inline-block; padding: 9px 16px; border-radius: 8px; border: 1.5px solid var(--blue); background: var(--blue); color: #fff; cursor: pointer; white-space: nowrap; font-weight: 600; }
   .fbtn:active { opacity: .85; }
@@ -120,6 +123,7 @@
   }
   .tgl.off { opacity: .45; }
 </style>
+<script>try { if (localStorage.getItem('canlink.pin')) document.documentElement.classList.add('haspin'); } catch (e) { /* 取不到本地记录就当没记住，照常显示密码屏 */ }</script>
 </head>
 <body>
 <div id="gate">

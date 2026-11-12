@@ -906,6 +906,7 @@
   (async () => {   // 本机记住的密码：自动解锁
     const saved = store.get('pin', '');
     if (saved && await gateUnlock(saved, true)) return;
+    document.documentElement.classList.remove('haspin'); // 没记住密码或记住的密码不对：这时才显示密码屏
     $('gatePin').focus();
   })();
 

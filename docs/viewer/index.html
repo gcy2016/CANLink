@@ -176,9 +176,10 @@
     .trow > :nth-child(2), .trow > :nth-child(4), .trow > :nth-child(5), .trow > :nth-child(6) { display: none; }
   }
   /* 嵌在 CAN 工具里时：不要大标题，占满宽度 */
-  body.embed .hero { display: none; }
-  body.embed .wrap { padding-top: 8px; }
+  html.embed .hero { display: none; }
+  html.embed .wrap { padding-top: 8px; }
 </style>
+<script>if (window.parent !== window) document.documentElement.classList.add('embed'); // 在 head 里就定下嵌入模式，第一帧就不带独立页大标题，免得进离线数据时闪一下“售后诊断助手”页</script>
 </head>
 <body>
 <div class="wrap">
@@ -982,7 +983,7 @@ const AIUI = AI.mount($('ai'), () => ({
 start();
 // 嵌在 CAN 工具里：标记嵌入模式；接收“录制”页交过来的报文直接打开
 if (window.parent !== window) {
-  document.body.classList.add('embed');
+  document.documentElement.classList.add('embed');
   window.addEventListener('message', e => {
     if (e.origin !== location.origin || !e.data || e.data.type !== 'canlink-open') return;
     show('log', true);
