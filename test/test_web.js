@@ -1,12 +1,12 @@
 // 自测：node canlink/test/test_web.js
-// 位时间计算、slcan 命令和解析、ASC 生成（并用 SEF 网站的 ASC 读取代码读回来核对）。
+// 位时间计算、slcan 命令和解析、ASC 生成（并用离线数据页的读取代码读回来核对）。
 const assert = require('assert');
 const path = require('path');
-const root = path.join(__dirname, '..', '..');
-const Slcan = require(path.join(root, 'docs/canlink/slcan.js'));
-const Recorder = require(path.join(root, 'docs/canlink/recorder.js'));
+const root = path.join(__dirname, '..');
+const Slcan = require(path.join(root, 'docs/slcan.js'));
+const Recorder = require(path.join(root, 'docs/recorder.js'));
 global.Blob = require('buffer').Blob;
-const CanLog = require(path.join(root, 'tools/web/canlog.js'));
+const CanLog = require(path.join(root, 'docs/viewer/canlog.js'));
 
 let n = 0;
 const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('✓', name); });
@@ -62,7 +62,7 @@ const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('�
     lr.push('t1232AB'); lr.push('CD\r\x07\rxS');
     assert.deepStrictEqual(got, [['t1232ABCD', false], ['', true], ['', false]]);
   });
-  await ok('录制 → ASC → SEF 读回一致（含截取时间段）', async () => {
+  await ok('录制 → ASC → 离线数据页读回一致（含截取时间段）', async () => {
     const rec = new Recorder();
     const frames = [];
     for (let i = 0; i < 70000; i++) {   // 超过一块，测试封存
@@ -102,7 +102,7 @@ const ok = (name, fn) => Promise.resolve(fn()).then(() => { n++; console.log('�
     assert.strictEqual(fr2.n, 10001);
     assert(Math.abs(fr2.t[0]) < 1e-9 && Math.abs(fr2.t[fr2.n - 1] - 10) < 1e-6);
   });
-  await ok('录制 → BLF → SEF 读回一致（经典/FD/扩展/远程）', async () => {
+  await ok('录制 → BLF → 离线数据页读回一致（经典/FD/扩展/远程）', async () => {
     const rec = new Recorder();
     const frames = [];
     const cases = [

@@ -1,17 +1,17 @@
 # 给 Claude 的说明
 
-**当前仓库：VehDiag_sef（Self 自用版）**——用户自己使用，功能最多（故障码查询、报文数据分析、AI 助手，以及对话里用的 `tools/analyze.py`），涉及的加密内容也最多：网站数据 `docs/data.enc.json` 用 6 位网站密码，原始 DBC / 问卷 `source/*.enc` 用原始文件密码（长密码）。
+**当前仓库：CANLink**（2026-11-12 由 VehDiag_sef 改名；改名前的帖子、提交里写的 VehDiag_sef / SEF 就是这个仓库）。用户自己用的 CAN 工具网页：录报文、看报文、离线分析（故障码查询 + 报文数据分析）、诊断、刷写，全在 `docs/` 这一个网页里。原来单独的“售后诊断助手（内部版）”网页已并进“查看 → 离线数据”，2026-11-12 删掉了。仓库公开，保密内容都是密文：网页用的问卷 + DBC `docs/data.enc.json`、刷写配置 `docs/secrets.enc.json` 用网页密码（打开网页时输的那个）；原始 DBC / 问卷 `source/*.enc` 用原始文件密码（长密码）。对话里分析报文用的 `tools/analyze.py` 等也在这。
 
-## 四个仓库的定位（同一个用户 gcy2016 的售后诊断工具系列）
+## 相关仓库（同一个用户 gcy2016 的售后诊断工具系列）
 | 仓库 | 含义 | 定位 | 网址 |
 |---|---|---|---|
 | VehDiag_pub | Public 公共版 | 给非专业人员自助查询故障码；没有报文解析和数据分析功能。打开即用，无密码 | https://gcy2016.github.io/VehDiag_pub/ |
-| VehDiag_sef | Self 自用版 | 用户自己用；功能最多，加密内容也最多（网站数据用 6 位网站密码，原始 DBC / 问卷用长的原始文件密码） | https://gcy2016.github.io/VehDiag_sef/ |
+| CANLink（原 VehDiag_sef） | 自用 CAN 工具 | 用户自己用；功能最多，加密内容也最多（见上） | https://gcy2016.github.io/CANLink/ |
 | VehDiag_shr | Share 分享版 | 给有一定专业能力的人查看报文；只能看原始报文（另有 AI 助手），不带 DBC、不做解析；另有故障码查询（诊断问卷由使用者自己上传，同 GNL）。无密码 | https://gcy2016.github.io/VehDiag_shr/ |
 | VehDiag_gnl | General 通用版 | 功能和自用版一致，但仓库里只有代码，DBC、诊断问卷都由使用者自己上传。无密码 | https://gcy2016.github.io/VehDiag_gnl/ |
 
 ## 车型：项目代号 ↔ 市场名
-SEF 网页按项目代号显示车型；用户在 SEF 里说项目代号。诊断问卷是通用的，Excel Sheet 名仍用市场名（以后新增也可能用市场名），映射记在 `tools/code_map.json`（build.py 生成网页时替换；analyze.py / aeb_response.py 的 `--model` 两种都认）。问卷新增车型时，在 `code_map.json` 里补上代号。
+网页（离线数据）按项目代号显示车型；用户说的也是项目代号。诊断问卷是通用的，Excel Sheet 名仍用市场名（以后新增也可能用市场名），映射记在 `tools/code_map.json`（build.py 生成内置资料时替换；analyze.py / aeb_response.py 的 `--model` 两种都认）。问卷新增车型时，在 `code_map.json` 里补上代号。
 
 | 项目代号 | 市场名 |
 |---|---|
@@ -50,14 +50,17 @@ SEF 网页按项目代号显示车型；用户在 SEF 里说项目代号。诊�
    问卷只收录制动控制模块，其他模块的故障码要说明“问卷未收录、仅按通用知识判断”。
 
 不要把解密后的 DBC、Excel 或报文明文提交到仓库（`.gitignore` 已排除 `*.dbc`、`*.xlsx`、`*.blf`、`*.asc`）。
-改了 `tools/template.html` 或 `tools/web/*.js` 后，需要网站密码（6 位）重新生成 `docs/`：`python tools/build.py --pin 网站密码`。
+问卷、DBC、`tools/*_map.json` 改了以后，要原始文件密码和网页密码重新生成内置资料：`python tools/build.py --pin 网页密码`（生成 `docs/data.enc.json`），再把 `docs/sw.js` 的 `VERSION` 加 1。两个密码都向用户要，不写进任何文件。
 
-## CAN 工具（canlink，issue #11）
-手机 / 电脑用的 CAN FD 工具（看报文、录报文、发报文；后面加诊断、刷写），硬件 MKS CANable 2.0。网页在 `docs/canlink/`（直接发布，不经 build.py；网页本体不加密、不放明文保密内容。例外：刷写的控制器 / 安全算法 / 诊断仪编号 / 刷写流程用网页密码加密放在 `docs/canlink/secrets.enc.json`，方案同主站 PBKDF2+AES-GCM，密文入库、密码不入库；打开网页先输密码（整页锁、本机记住）自动载入，页面不显示这些内容），固件在 `canlink/firmware/`（GPLv3），说明和自测见 `canlink/README.md`。改了网页跑 `node canlink/test/test_web.js`、`test_dfu.js`、`test_diag.js`、`test_flashfile.js` 和 `test_flash.js`。网页有离线缓存（`docs/canlink/sw.js`），改了 `docs/canlink/` 里的文件要把 sw.js 的 `VERSION` 加 1，新加的文件也要加进它的 `FILES`。“查看 → 离线数据”是 `docs/canlink/viewer/`，从 VehDiag_gnl 复制（存储键改成 `clv_`、加了嵌入和接收录制的代码，见文件里的注释）；GNL / SEF 的 canlog、plot、ai、uds、dbc、qn.js 改了要同步过来。
+## 网页（issue #11）
+手机 / 电脑用的 CAN FD 工具，硬件 MKS CANable 2.0。网页在 `docs/`（GitHub Pages 直接发布，没有生成步骤；网页本体不加密、不放明文保密内容），固件在 `firmware/`（GPLv3），说明见 `README.md`。
+- **加密内容**（方案 PBKDF2 + AES-GCM，密文入库、密码不入库）：打开网页先输密码（整页锁、本机记住），解开 `docs/secrets.enc.json`（刷写的控制器 / 安全算法 / 诊断仪编号 / 刷写流程，页面不显示）和 `docs/data.enc.json`（各车型问卷 + DBC，`docs/data.js` 负责解，“离线数据”页和诊断页读故障码都用它）。
+- **离线数据**（`docs/viewer/`）：从 VehDiag_gnl 复制，存储键改成 `clv_`，加了嵌入、接收录制、内置资料的代码（见文件里的注释）。内置资料优先级：自己上传的 DBC / 问卷 > 内置的；车型自带对应 DBC，也能手动换。GNL 的 canlog、plot、ai、uds、dbc、qn.js 改了要同步过来。
+- **自测**：改了网页跑 `node test/test_web.js`、`test_dfu.js`、`test_diag.js`、`test_flashfile.js`、`test_flash.js`、`test_data.js`。
+- **离线缓存**（`docs/sw.js`）：改了 `docs/` 里的文件要把 `VERSION` 加 1，新加的文件也要加进它的 `FILES`。
 
 ## 推送
-用户已同意：VehDiag_sef、VehDiag_pub、VehDiag_shr、VehDiag_gnl 四个仓库的改动都可以直接推送到 `main`（推送前先在本地测试），不必走 PR / 等 Muse 合并。
-SEF 改了网页相关文件后记得用网站密码重新生成 `docs/` 一起提交。
+用户已同意：CANLink、VehDiag_pub、VehDiag_shr、VehDiag_gnl 四个仓库的改动都可以直接推送到 `main`（推送前先在本地测试），不必走 PR / 等 Muse 合并。
 
 ## 需要在 GitHub 网页上操作时（改仓库设置、Pages、分支重命名等）
 默认交给 Muse（Meta 的 AI，用 gcy2016 账号在网页上操作）：在相关仓库开一个 issue，标题以“muse：”开头，正文写清楚链接和逐步操作，最后请 muse 回复并关闭 issue。
@@ -69,7 +72,7 @@ SEF 改了网页相关文件后记得用网站密码重新生成 `docs/` 一起�
 - 功能够用就行，别做成大而全的 CANalyzer；新功能先问清范围再动手。
 - 配色以主题蓝为主，不要太亮、太花。
 - 手机和电脑都要适配：手机上内容不能超出屏幕宽度（长内容换行），输入框字号 ≥16px 防 iOS 自动放大；电脑上布局要合理，不能每行都特别短。
-- 凡是能选报文的地方（SEF、SHR、GNL）都支持拖动多选，多选时不跳详情；改一个仓库的通用交互，其他仓库同步改。
+- 凡是能选报文的地方（CANLink 的离线数据、SHR、GNL）都支持拖动多选，多选时不跳详情；改一个仓库的通用交互，其他仓库同步改。
 
 ## 已讨论的结论 / 待办
 - 网页 AI 助手目前只根据“当前数据”和用户复制的报文回答，不会自己查。
@@ -77,6 +80,5 @@ SEF 改了网页相关文件后记得用网站密码重新生成 `docs/` 一起�
   1. 类似微信的聊天界面；
   2. AI 助手加“工具调用”：网页提供查信号、取时间段统计、列报文等固定工具，模型只能提申请、由网页执行后返回结果，报文不离开用户设备。
 - 不做：给网页 AI 助手配后端服务器（存密钥、跑 analyze.py）。疑难问题直接把报文发到对话里，用 analyze.py 分析。
-- 待定：网站访问密码目前是 6 位数字（暴力破解几分钟到一天就能解开网站数据）。用户可能改成与原始文件密码无关的 10–12 位字母数字随机密码，需要改 build.py 的校验和 template.html 的输入框，网址不变。
 
 @AI_TEAM.md

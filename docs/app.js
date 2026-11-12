@@ -404,7 +404,7 @@
     setSeg('tmode', mode);
     $('onlineBox').hidden = mode !== 'online';
     $('offlineBox').hidden = mode !== 'offline';
-    $('tmodeHint').textContent = mode === 'offline' ? '打开 blf / asc 文件，或在“录制”页点“查看”。DBC、诊断问卷在下面加载。' : '';
+    $('tmodeHint').textContent = mode === 'offline' ? '打开 blf / asc 文件，或在“录制”页点“查看”。车型在下面选。' : '';
     if (mode === 'offline') {
       const f = $('viewerFrame');
       if (!f.src) { viewerReady = false; f.src = 'viewer/'; }
@@ -620,9 +620,13 @@
   };
 
   // 故障码：读 + 清，读出来对照问卷
+  // 问卷来源和“离线数据”页一致：自己上传过就用上传的；否则用内置资料里那一页选的车型（没选过就全部车型一起查）
+  let builtinData = null;
   function loadQn() {
     try { const j = JSON.parse(localStorage.getItem('clv_qn')); if (j && j.models) return j.models.flatMap(m => m.items || []); } catch (e) { /* ignore */ }
-    return [];
+    if (!builtinData) return [];
+    const cur = builtinData.models.find(m => m.model === localStorage.getItem('clv_model'));
+    return cur ? cur.items : builtinData.models.flatMap(m => m.items || []);
   }
   $('btnReadDtc').onclick = async () => {
     const sub = parseHex($('dtcSub').value || '02 FF');
@@ -756,7 +760,7 @@
   }
 
   // 开屏密码解锁内置配置：控制器 / 安全算法 / 诊断仪编号 / 刷写流程加密放在 secrets.enc.json。
-  // 加密方案同 SEF 主站（PBKDF2-SHA256 + AES-256-GCM），密码不进仓库；解锁后自动载入，页面不显示这些内容。
+  // 加密方案：PBKDF2-SHA256 + AES-256-GCM，密码不进仓库；解锁后自动载入，页面不显示这些内容。
   const b64u = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
   async function unlockSecrets(pin) {
     const enc = await (await fetch('secrets.enc.json', { cache: 'no-cache' })).json();
@@ -873,6 +877,7 @@
     catch (e) { if (!silent) $('gateErr').innerHTML = '<span class="bad">密码错误，请重试</span>'; return false; }
     applySecrets(sec);
     store.set('pin', pin);
+    CanlinkData.get().then(d => { builtinData = d; }).catch(() => { /* 内置资料取不到：离线数据页自己上传也能用 */ });
     $('gate').hidden = true;
     return true;
   }

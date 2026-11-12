@@ -2,7 +2,7 @@
 // 用一个模拟的 STM32 DFU 设备（按 DfuSe 协议）检查刷写流程：擦除、写入、校验、退出。
 const assert = require('assert');
 const path = require('path');
-const Dfu = require(path.join(__dirname, '..', '..', 'docs/canlink/dfu.js'));
+const Dfu = require(path.join(__dirname, '..', 'docs/dfu.js'));
 global.navigator = {};
 
 function fakeDevice(transferSize) {

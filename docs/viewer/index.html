@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- CAN 工具的“离线数据”页：从 VehDiag_gnl（通用版）复制，DBC / 问卷由使用者自己加载。canlog / plot / ai / uds / dbc / qn.js 与 GNL、SEF 同源，改了要同步。故障码页按 SEF #12 删了底部“维修前确认问卷”和两行提示。 -->
+<!-- CAN 工具的“离线数据”页：从 VehDiag_gnl（通用版）复制，再加上内置资料：各车型的问卷和 DBC 加密放在 ../data.enc.json，用网页密码解开（../data.js），也可以自己上传别的 DBC / 问卷临时替换。canlog / plot / ai / uds / dbc / qn.js 与 GNL 同源，改了要同步。故障码页按 SEF #12 删了底部“维修前确认问卷”和两行提示。 -->
 <title>售后诊断助手</title>
 <style>
   :root {
@@ -183,25 +183,27 @@
 <body>
 <div class="wrap">
   <div class="hero">
-    <h1>🔧 售后诊断助手<span class="tag">通用版</span></h1>
-    <p>自行加载 DBC 与诊断问卷 · DTC 查询 · 报文数据分析</p>
-    <p>👇 先加载资料，再选功能 · 所有文件只在本机浏览器内读取，不会上传</p>
-    <p class="stmt">声明：本网站仅提供解析工具，不包含任何非代码类文件，所有支持功能使用的必要资料均需用户手动上传。</p>
+    <h1>🔧 售后诊断助手<span class="tag">离线数据</span></h1>
+    <p>DTC 查询 · 报文数据分析</p>
+    <p>👇 先选车型，再选功能 · 所有文件只在本机浏览器内读取，不会上传</p>
   </div>
 
   <div id="app">
     <div class="card">
-      <div class="step"><div class="num">1</div><h2>加载资料</h2></div>
+      <div class="step"><div class="num">1</div><h2 id="s1t">加载资料</h2></div>
+      <div id="qnPick" hidden>
+        <p class="hint" id="qnPickT" style="margin:4px 2px 8px"></p>
+        <div class="grid" id="models"></div>
+      </div>
+      <details id="upBox" open>
+        <summary class="hint" style="cursor:pointer;margin:12px 2px 8px">自己上传 DBC / 诊断问卷（临时换成别的资料）</summary>
       <div class="ups">
         <label class="up" id="upDbc"><input type="file" id="fDbc" multiple hidden><b>📑 DBC</b><span id="dbcSt">点击选择 .dbc 文件（可多选）</span></label>
         <label class="up" id="upQn"><input type="file" id="fQn" hidden><b>📋 诊断问卷</b><span id="qnSt">点击选择 Excel（.xlsx）</span></label>
       </div>
+      </details>
       <div class="ld" id="ld"></div>
-      <div id="qnPick" hidden>
-        <p class="hint" style="margin:12px 2px 8px">问卷有多个 Sheet，请选择对应的车型 / 配置：</p>
-        <div class="grid" id="models"></div>
-      </div>
-      <p class="hint">DBC 用于解析信号、画曲线；诊断问卷用于查询故障码含义。两者都可以不加载，加载后会记在本机浏览器里，下次打开不用重新选择。</p>
+      <p class="hint" id="s1hint"></p>
     </div>
 
     <div class="card" id="s2">
@@ -294,6 +296,7 @@
   </div>
 </div>
 
+<script src="../data.js"></script>
 <script src="canlog.js"></script>
 <script src="plot.js"></script>
 <script src="uds.js"></script>
@@ -308,37 +311,80 @@ const store = {
 };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let DB = { models: [] }, model = null, items = [], view = null, DBC = null, QNNAME = '', NOTE = '', CURIT = null, CURQ = '', LASTDTC = [], LASTEV = [], TRTXT = '';
+// 资料有两个来源：内置的（BUILTIN，解锁后自动载入，车型自带对应的 DBC）和自己上传的（UDBC / UDB，记在本机）。
+// 上传了就用上传的，点“清除”换回内置的。DB / DBC 是当前实际在用的，由 resolve() 算出来。
+let BUILTIN = null, BUILTIN_ST = 'loading', UDBC = null, UDB = null, dbcPick = '';
+const builtinDbc = () => (BUILTIN && !UDBC ? BUILTIN.dbcs : null);
+const dbcLabel = () => { $('dbcCur').textContent = DBC ? 'DBC：' + DBC.name : '未加载 DBC（只能看报文和故障码）'; };
+function resolve() {
+  DB = UDB || (BUILTIN ? { models: BUILTIN.models } : { models: [] });
+  QNNAME = UDB ? UDB.file || '' : '';
+  if (model && !DB.models.includes(model)) model = null;
+  const dbcs = builtinDbc();
+  DBC = UDBC || (dbcs && dbcs[dbcPick || (model && model.dbc)]) || null;
+}
 
 // ================= 加载资料 / 功能 =================
 function start() {
   document.querySelectorAll('.fns button').forEach(b => b.onclick = () => show(b.dataset.v));
-  try { const x = JSON.parse(store.get('localStorage', 'clv_dbc')); if (x) DBC = x; } catch (e) {}
-  try { const x = JSON.parse(store.get('localStorage', 'clv_qn')); if (x) { DB = x; QNNAME = x.file || ''; } } catch (e) {}
-  renderLoaded();
-  const last = DB.models.findIndex(m => m.model === store.get('localStorage', 'clv_model'));
-  if (DB.models.length) pick(last >= 0 ? last : 0, true);
+  try { const x = JSON.parse(store.get('localStorage', 'clv_dbc')); if (x) UDBC = x; } catch (e) {}
+  try { const x = JSON.parse(store.get('localStorage', 'clv_qn')); if (x && x.models) UDB = x; } catch (e) {}
+  refresh(true);
   show(store.get('localStorage', 'clv_view') || 'dtc', true);
+  loadBuiltin();
+}
+// 资料变了（上传 / 清除 / 内置资料到了）：重算在用的资料，车型尽量保持上次选的
+function refresh(silent) {
+  resolve();
+  renderLoaded();
+  if (DB.models.length) {
+    let i = DB.models.indexOf(model);
+    if (i < 0) i = DB.models.findIndex(m => m.model === store.get('localStorage', 'clv_model'));
+    pick(i >= 0 ? i : 0, true);
+  } else {
+    items = []; $('cur').textContent = ''; dbcLabel();
+    if ($('q').value) search();
+    if (LOG) analyze();
+  }
+  if (!silent) show(view || 'dtc', true);
+}
+// 内置资料：嵌在 CAN 工具里时用主页面已经解开的那份，省得再算一遍密钥
+async function loadBuiltin() {
+  let src = null;
+  try { src = window.parent !== window && window.parent.CanlinkData; } catch (e) {}
+  src = src || window.CanlinkData;
+  try {
+    const d = await src.get();
+    if (!d || !Array.isArray(d.models) || !d.dbcs) throw new Error('内置资料格式不对');
+    BUILTIN = d; BUILTIN_ST = 'ok';
+  } catch (e) { BUILTIN_ST = 'none'; }
+  refresh(true);
 }
 
 const save = (k, v) => {
   try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; }
 };
 function renderLoaded() {
-  const nSig = DBC ? DBC.msgs.reduce((a, m) => a + m.sigs.length, 0) : 0;
-  $('upDbc').classList.toggle('ok', !!DBC);
-  $('dbcSt').textContent = DBC ? `${DBC.name}（${DBC.msgs.length} 帧 / ${nSig} 信号）` : '点击选择 .dbc 文件（可多选）';
-  $('upQn').classList.toggle('ok', DB.models.length > 0);
-  $('qnSt').textContent = DB.models.length ? `${QNNAME}（${DB.models.length} 个 Sheet）` : '点击选择 Excel（.xlsx）';
+  const nSig = UDBC ? UDBC.msgs.reduce((a, m) => a + m.sigs.length, 0) : 0;
+  $('upDbc').classList.toggle('ok', !!UDBC);
+  $('dbcSt').textContent = UDBC ? `${DBC.name}（${DBC.msgs.length} 帧 / ${nSig} 信号）` : '点击选择 .dbc 文件（可多选）';
+  $('upQn').classList.toggle('ok', !!UDB);
+  $('qnSt').textContent = UDB ? `${QNNAME}（${DB.models.length} 个 Sheet）` : '点击选择 Excel（.xlsx）';
+  const back = BUILTIN ? '清除，换回内置' : '清除';
   const parts = [];
-  if (DBC) parts.push('DBC 已加载 <button id="rmDbc">清除</button>');
-  if (DB.models.length) parts.push('问卷已加载 <button id="rmQn">清除</button>');
+  if (UDBC) parts.push(`正在用自己上传的 DBC <button id="rmDbc">${back}</button>`);
+  if (UDB) parts.push(`正在用自己上传的问卷 <button id="rmQn">${back}</button>`);
   $('ld').innerHTML = parts.join(' · ') + (NOTE ? `<br>⚠️ ${esc(NOTE)}` : '');
   NOTE = '';
-  if ($('rmDbc')) $('rmDbc').onclick = e => { e.preventDefault(); DBC = null; save('clv_dbc', null); renderLoaded(); if (LOG) analyze(); };
-  if ($('rmQn')) $('rmQn').onclick = e => {
-    e.preventDefault(); DB = { models: [] }; model = null; items = []; QNNAME = ''; save('clv_qn', null); renderLoaded(); renderModels();
-    $('cur').textContent = ''; if ($('q').value) search(); if (LOG) analyze();
-  };
+  if ($('rmDbc')) $('rmDbc').onclick = e => { e.preventDefault(); UDBC = null; save('clv_dbc', null); refresh(true); };
+  if ($('rmQn')) $('rmQn').onclick = e => { e.preventDefault(); UDB = null; model = null; save('clv_qn', null); refresh(true); };
+  // 有内置资料时：第 1 步是选车型，上传框收起来；没有时和通用版一样自己上传
+  $('s1t').textContent = BUILTIN ? '选择车型' : '加载资料';
+  $('upBox').open = !BUILTIN || !!UDBC || !!UDB;
+  $('s1hint').textContent = BUILTIN_ST === 'loading' ? '正在载入内置资料…'
+    : BUILTIN ? '问卷和 DBC 已内置，选车型后自动对应。自己上传的会记在本机浏览器里，优先于内置的。'
+    : 'DBC 用于解析信号、画曲线；诊断问卷用于查询故障码含义。两者都可以不加载，加载后会记在本机浏览器里，下次打开不用重新选择。'
+      + (window.parent === window ? '（内置资料没载入：先打开 CAN 工具首页输入密码。）' : '');
   renderModels();
 }
 function renderModels() {
@@ -352,6 +398,8 @@ function renderModels() {
     box.appendChild(b);
   });
   $('qnPick').hidden = DB.models.length < 2;
+  $('qnPickT').textContent = UDB ? '问卷有多个 Sheet，请选择对应的车型 / 配置：' : '';
+  $('qnPickT').hidden = !UDB;
 }
 
 async function loadDbc(files) {
@@ -365,11 +413,10 @@ async function loadDbc(files) {
       if (!d.msgs.length) throw new Error(`${f.name} 里没有找到报文定义`);
       list.push(d);
     }
-    DBC = list.length > 1 ? Dbc.merge(list) : list[0];
-    if (!save('clv_dbc', DBC)) NOTE = 'DBC 太大，未能记在本机，下次需要重新选择';
+    UDBC = list.length > 1 ? Dbc.merge(list) : list[0];
+    if (!save('clv_dbc', UDBC)) NOTE = 'DBC 太大，未能记在本机，下次需要重新选择';
   } catch (e) { alert('DBC 读取失败：' + (e.message || e)); }
-  renderLoaded();
-  if (LOG) analyze();
+  refresh(true);
 }
 
 let xlsxReady = null;
@@ -386,21 +433,23 @@ async function loadQn(f) {
     await loadXlsx();
     const models = Qn.parse(await f.arrayBuffer());
     if (!models.length) throw new Error('没有识别到故障码。表头需包含 DTC Number / Faults Types / Possible Fault / Corrective 列');
-    DB = { models, file: f.name };
-    QNNAME = f.name;
+    UDB = { models, file: f.name };
     model = null;
-    if (!save('clv_qn', DB)) NOTE = '问卷太大，未能记在本机，下次需要重新选择';
-    renderLoaded();
-    pick(0, true);
+    if (!save('clv_qn', UDB)) NOTE = '问卷太大，未能记在本机，下次需要重新选择';
+    store.set('localStorage', 'clv_model', models[0].model);
+    refresh(true);
   } catch (e) { alert('诊断问卷读取失败：' + (e.message || e)); renderLoaded(); }
 }
 
 function pick(i, silent) {
+  if (DB.models[i] !== model) dbcPick = '';   // 换车型：回到这个车型自带的 DBC
   model = DB.models[i];
+  resolve();
   items = model.items.map(it => ({ ...it, b: it.hm + it.l, bd: dispToHex(it.d) }));
   [...$('models').children].forEach((b, j) => b.classList.toggle('on', i === j));
-  $('cur').textContent = DB.models.length > 1 ? '问卷：' + model.model : '';
+  $('cur').textContent = !UDB ? model.model : DB.models.length > 1 ? '问卷：' + model.model : '';
   store.set('localStorage', 'clv_model', model.model);
+  dbcLabel();
   if ($('q').value) search(); else $('s3').hidden = true;
   if (LOG) analyze();
   if (!silent) show(view || 'dtc');
@@ -414,7 +463,7 @@ function show(v, silent) {
   $('vLog').hidden = v !== 'log';
   $('aiCard').hidden = false;
   document.body.classList.toggle('wide', v === 'log');
-  $('dbcCur').textContent = DBC ? 'DBC：' + DBC.name : '未加载 DBC（只能看报文和故障码）';
+  dbcLabel();
   if (v === 'dtc' && !silent) $('q').focus();
   if (v === 'log' && plot) plot.draw();
   if (v === 'log' && !silent && !LOG && !LOADING) flash($('drop'));   // 还没打开报文：带到“打开报文”并闪一下提示
@@ -442,7 +491,7 @@ function search() {
   if (!q) { $('s3').hidden = true; return; }
   if (!model) {
     $('s3').hidden = false; $('s3t').textContent = '查询结果';
-    $('out').innerHTML = '<div class="msg">还没有加载诊断问卷<br>请先在 ① 选择问卷 Excel</div>';
+    $('out').innerHTML = `<div class="msg">${BUILTIN_ST === 'loading' ? '正在载入内置资料，稍等一下再查' : '还没有加载诊断问卷<br>请先在 ① 选择问卷 Excel'}</div>`;
     return;
   }
   $('s3').hidden = false;
@@ -532,6 +581,7 @@ async function openFile(f, restored) {
     if (id !== LOADID) return;
     LOG = log;
     LOGNAME = f.name;
+    dbcPick = '';
     bar.style.width = '100%';
     LOGSAVED = !!restored;
     if (!restored) try { await LogDB.put({ name: f.name, data: new Blob([buf]) }); LOGSAVED = true; } catch (e) {}
@@ -553,8 +603,17 @@ function clearLog() {
   LogDB.del().catch(() => {});
 }
 
+// 内置的各 DBC 能认出多少帧，用于提示车型是否选错
+function coverage(name) {
+  const ids = new Set(BUILTIN.dbcs[name].msgs.map(keyOf));
+  let fr = 0;
+  for (const [id, idx] of LOG.byId) if (ids.has(id)) fr += idx.length;
+  return { name, fr };
+}
+
 function analyze() {
   if (!LOG) return;
+  resolve();
   const known = DBC ? new Set(DBC.msgs.map(keyOf)) : new Set();
   const unknown = [...LOG.byId.keys()].filter(id => !known.has(id)).sort((a, b) => a - b);
   let mfr = 0;
@@ -567,7 +626,15 @@ function analyze() {
     `<div><small>帧数</small>${LOG.n}${fd ? `（FD ${fd}）` : ''}</div><div><small>通道</small>${chs || '-'}</div>` +
     `<div><small>报文 ID</small>${LOG.byId.size} 个</div>` +
     `<div><small>DBC 能解析</small>${DBC ? `${[...known].filter(id => LOG.byId.has(id)).length} 个 ID / ${LOG.n ? Math.round(mfr / LOG.n * 100) : 0}% 帧` : '未加载 DBC'}</div></div>`;
-  if (DBC && LOG.n && mfr / LOG.n < 0.3)
+  const dbcs = builtinDbc();
+  if (dbcs) {
+    const cur = dbcPick || (model && model.dbc) || '';
+    h += `<p class="hint">使用 DBC：<select id="dbcSel">${cur in dbcs ? '' : '<option value="">（未选）</option>'}${Object.keys(dbcs).map(n =>
+      `<option ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>（默认按车型自动选择）</p>`;
+    const best = Object.keys(dbcs).map(coverage).sort((a, b) => b.fr - a.fr)[0];
+    if (best && best.name !== cur && best.fr > mfr * 1.3 && LOG.n)
+      h += `<div class="warn">报文和 <b>${esc(best.name)}</b> 更匹配（能解析 ${Math.round(best.fr / LOG.n * 100)}% 帧），请确认车型是否选对。</div>`;
+  } else if (DBC && LOG.n && mfr / LOG.n < 0.3)
     h += `<div class="warn">DBC 只能解析 ${Math.round(mfr / LOG.n * 100)}% 的帧，请确认 DBC 和报文是否属于同一车型 / 网段。</div>`;
   if (DBC && unknown.length)
     h += `<details class="hint"><summary>DBC 中没有定义的 ID（${unknown.length} 个）</summary>${unknown.map(id =>
@@ -575,6 +642,7 @@ function analyze() {
   h += `<div class="ld">${LOGSAVED ? '报文已记在本机，下次打开不用重新选择' : '⚠️ 报文太大或浏览器不允许，未能记在本机，下次需要重新选择'} <button id="rmLog">清除</button></div>`;
   $('info').innerHTML = h;
   $('rmLog').onclick = clearLog;
+  if ($('dbcSel')) $('dbcSel').onchange = e => { dbcPick = e.target.value; analyze(); };
   show(view);
   $('res').hidden = false;
   renderDTC();

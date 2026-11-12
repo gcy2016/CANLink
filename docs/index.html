@@ -4,1905 +4,475 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>售后诊断助手</title>
+<title>CAN 工具</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#22507f">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root {
-    --bg: #f2f4f7; --card: #fff; --text: #1f2937; --muted: #6b7280;
+    --bg: #f4f7fb; --card: #fff; --text: #1d2733; --muted: #6b7a8c;
     --blue: #2a6db5; --blue-d: #22507f; --blue-l: #e8f0fa; --line: #d5dde8;
-    --green: #0fbf5f; --tip-bg: #eef8ef; --tip-line: #bfe3c4; --red: #d93025;
-    --warn-bg: #fff6e5; --warn-line: #f3d18b;
+    --ok: #2e8b57; --warn: #c27c0e; --bad: #c0392b; --hl: #fff2b3;
+    --mono: ui-monospace, Menlo, Consolas, "Roboto Mono", monospace;
   }
   * { box-sizing: border-box; }
-  /* 手机上禁止页面左右晃动：任何元素略超出屏幕宽度时都不产生横向滚动；关闭 iOS 横屏时的字体自动放大 */
-  html { overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-  body { overflow-x: clip; }
-  .wrap { overflow-wrap: anywhere; }   /* 超长的信号名 / 数据在屏幕内自动换行 */
-  /* 手机：输入框字号不小于 16px，否则 iOS 点进输入框会自动放大整个页面，之后页面能左右拖动 */
-  @media (max-width: 899px) { .tf input, input.sq, select { font-size: 16px !important; } }
-  body { margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
-  .wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
-  body.wide .wrap { max-width: 1280px; }
-  .hero { background: linear-gradient(135deg, var(--blue-d), var(--blue)); color: #fff;
-    border-radius: 16px; padding: 20px 20px 18px; margin-bottom: 14px; }
-  .hero h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: .5px; }
-  .hero p { margin: 0; opacity: .88; font-size: 14px; }
-  .tag { display: inline-block; background: rgba(255,255,255,.2); border-radius: 6px; padding: 0 6px; font-size: 12px; margin-left: 6px; vertical-align: 3px; }
-  .card { background: var(--card); border-radius: 16px; padding: 18px 16px; margin-bottom: 14px; }
-  .step { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-  .num { width: 34px; height: 34px; border-radius: 50%; background: var(--blue); color: #fff;
-    display: grid; place-items: center; font-weight: 700; flex: none; }
-  .step h2 { margin: 0; font-size: 18px; }
-  .step .cur { margin-left: auto; color: var(--blue); font-size: 14px; }
-  .disabled { opacity: .45; pointer-events: none; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-  .grid button { padding: 14px 6px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff;
-    color: var(--blue); font-size: 16px; cursor: pointer; }
-  .grid button.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
-  .fns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .fns button { padding: 16px 8px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer;
-    color: var(--blue-d); font-size: 17px; font-weight: 600; text-align: center; }
-  .fns button small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .fns button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
-  .fns button.on small { color: rgba(255,255,255,.85); }
-  .search { display: flex; gap: 8px; }
-  input.q { flex: 1; min-width: 0; font-size: 18px; padding: 12px 14px; border: 1.5px solid var(--line);
-    border-radius: 12px; outline: none; text-transform: uppercase; font-family: ui-monospace, Menlo, Consolas, monospace; }
-  input.q:focus, input.sq:focus { border-color: var(--blue); }
-  .search button { padding: 0 16px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font-size: 16px; }
-  .hint { color: var(--muted); font-size: 13px; margin: 8px 2px 0; }
-  .msg { color: var(--muted); text-align: center; padding: 10px 0; }
-  .list { list-style: none; margin: 0; padding: 0; }
-  .list li { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
-  .list li:active, .list li:hover { background: var(--blue-l); }
-  .code { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; color: var(--blue-d); }
-  .bytes { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted); font-size: 13px; margin-left: 6px; }
-  .list .d { font-size: 14px; margin-top: 2px; }
-  .codes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-  .codes div { background: var(--blue-l); border-radius: 10px; padding: 8px; text-align: center; }
-  .codes small { display: block; color: var(--muted); font-size: 12px; }
-  .codes b { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 17px; color: var(--blue-d); }
-  .sec { margin-bottom: 14px; }
-  .sec h3 { margin: 0 0 4px; font-size: 15px; color: var(--blue-d); }
-  .sec h3::before { content: ""; display: inline-block; width: 4px; height: 14px; background: var(--blue);
-    border-radius: 2px; margin-right: 8px; vertical-align: -1px; }
-  .sec .t { white-space: pre-wrap; background: #f8fafc; border-radius: 10px; padding: 10px 12px; font-size: 15px; }
-  .back { border: 0; background: none; color: var(--blue); font-size: 15px; padding: 0; margin-bottom: 10px; cursor: pointer; }
-  .tip { background: var(--tip-bg); border: 1.5px solid var(--tip-line); border-radius: 14px; padding: 12px 14px;
-    text-align: center; font-weight: 600; margin-bottom: 14px; }
-  .notes { background: #e9edf2; border-radius: 14px; padding: 12px 14px; color: #555; font-size: 14px; }
-  .notes p { margin: 4px 0; }
-  .lock { text-align: center; }
-  .lock input { width: 220px; max-width: 100%; text-align: center; letter-spacing: 12px; font-size: 26px;
-    padding: 12px; border: 1.5px solid var(--line); border-radius: 12px; outline: none; font-family: ui-monospace, Menlo, monospace; }
-  .lock input:focus { border-color: var(--blue); }
-  .lock .err { color: var(--red); min-height: 24px; margin-top: 8px; font-size: 14px; }
-  /* ---- 电脑 / 平板宽屏适配 ---- */
-  @media (min-width: 900px) {
-    .wrap { max-width: 880px; }
-    body.wide .wrap { max-width: 1440px; }
-  }
-
-  /* 宽屏：报文列表在左、详情在右，点一行右边直接显示 */
-  @media (min-width: 1100px) {
-    .tgrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
-    .tgrid .tview { height: 560px; }
-    .tgrid #tdet { margin-top: 0; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
-    .tgrid #tdet:empty::before { content: "← 点左侧一行查看报文详情"; display: block; color: var(--muted); font-size: 14px; padding: 40px 12px; text-align: center; border: 1.5px dashed var(--line); border-radius: 12px; }
-  }
-  #aiCard { margin-top: 14px; }
   [hidden] { display: none !important; }
-
-  /* ---- 数据分析 ---- */
-  .drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 22px 12px; text-align: center; color: var(--muted); cursor: pointer; }
-  .drop.over { border-color: var(--blue); background: var(--blue-l); }
-  .drop b { color: var(--blue); }
-  .drop.flash { animation: flash .5s ease-in-out 3; }
-  @keyframes flash { 50% { border-color: var(--blue); background: var(--blue-l); } }
-  .ld { font-size: 13px; color: var(--muted); margin-top: 8px; }
-  .ld button { border: 0; background: none; color: var(--red); cursor: pointer; font-size: 13px; padding: 0 4px; }
-  .bar { height: 6px; background: var(--blue-l); border-radius: 3px; overflow: hidden; margin-top: 10px; }
-  .bar div { height: 100%; width: 0; background: var(--blue); transition: width .2s; }
-  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
-  .kv div { background: #f8fafc; border-radius: 10px; padding: 6px 10px; font-size: 14px; }
-  .kv small { display: block; color: var(--muted); font-size: 12px; }
-  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 8px 12px; font-size: 14px; margin-top: 10px; }
-  select { font-size: 14px; padding: 4px 8px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; }
-  .dtc { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
-  .dtc .h { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
-  .dtc .meta { color: var(--muted); font-size: 13px; }
-  .dtc .desc { margin-top: 4px; font-weight: 600; }
-  .dtc details { margin-top: 6px; }
-  .dtc details summary { color: var(--blue); cursor: pointer; font-size: 14px; }
-  .dtc .sec { margin: 8px 0 0; }
-  .ev { font-size: 13px; color: var(--muted); margin: 2px 0; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--line); border-radius: 999px;
-    padding: 2px 10px; font-size: 13px; background: #fff; cursor: pointer; max-width: 100%; }
-  .chip i { font-style: normal; width: 10px; height: 10px; border-radius: 50%; flex: none; }
-  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip b { color: var(--muted); font-weight: 400; margin-left: 2px; }
-  .chip.sus { border-color: var(--warn-line); background: var(--warn-bg); }
-  .sbox { position: relative; }
-  input.sq { width: 100%; font-size: 15px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px; outline: none; }
-  .drop-list { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin-top: 4px; background: #fff; border: 1px solid var(--line);
-    border-radius: 10px; max-height: 340px; overflow: auto; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
-  .drop-list div { padding: 6px 12px; cursor: pointer; border-bottom: 1px solid #f1f3f6; font-size: 14px; }
-  .drop-list div:hover, .drop-list div.act { background: var(--blue-l); }
-  .drop-list small { color: var(--muted); display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; align-items: center; }
-  .tools button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
-  .tools button:hover { background: var(--blue-l); }
-  .tools .sp { flex: 1; }
-  .plot { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
-  /* ---- 报文提取（Trace） ---- */
-  .tf { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
-  .tf input { flex: 1; min-width: 200px; font-size: 15px; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 10px; outline: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
-  .tf input:focus { border-color: var(--blue); }
-  .tf button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
-  .tf .cnt { color: var(--muted); font-size: 13px; }
-  .trace { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font: 12.5px/1 ui-monospace, Menlo, Consolas, monospace; }
-  .trow { display: grid; grid-template-columns: 92px 44px 92px 130px 34px 40px 1fr; align-items: center; height: 24px; line-height: 24px; padding: 0 8px; gap: 6px; white-space: nowrap; }
-  .trow > span { overflow: hidden; text-overflow: ellipsis; }
-  .thead { background: #f1f4f8; color: var(--muted); font-family: -apple-system, "Microsoft YaHei", sans-serif; font-size: 12px; border-bottom: 1px solid var(--line); }
-  .tview { height: 420px; overflow: auto; position: relative; outline: none; }
-  .tview .trow { position: absolute; left: 0; right: 0; cursor: pointer; }
-  .tview .trow:hover { background: #f5f8fc; }
-  .tview .trow.sel { background: var(--blue); color: #fff; }
-  .tview .trow.diag { color: var(--blue-d); background: #f3f7fc; font-weight: 600; }
-  .tview .trow.sel.diag { background: var(--blue); color: #fff; }
-  .tview .trow.pick, .tview .trow.pick.diag { background: #d6e5f6; }
-  .tview .trow.pick.sel { background: var(--blue); }
-  /* 多选模式：行左侧勾选框，按住上下滑动可连续选择（触屏只在勾选框上拖动才连选，其余区域照常滚动） */
-  .trace.multi .trow { padding-left: 40px; }
-  .ck { position: absolute; left: 0; top: 0; width: 36px; height: 24px; display: grid; place-items: center; touch-action: none; cursor: pointer; }
-  .ck::before { content: ""; width: 14px; height: 14px; border: 1.5px solid #9aa5b4; border-radius: 4px; background: #fff; }
-  .trow.pick .ck::before { background: var(--blue); border-color: var(--blue); box-shadow: inset 0 0 0 2px #fff; }
-  .trow.sel .ck::before { border-color: #fff; }
-  .selbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 14px; }
-  .selbar button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 10px; font-size: 13px; cursor: pointer; color: var(--blue-d); }
-  .selbar button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
-  .tdet { margin-top: 12px; }
-  .tdet .hexg { font: 13px/1.7 ui-monospace, Menlo, Consolas, monospace; background: #f8fafc; border-radius: 10px; padding: 8px 12px; word-break: break-all; }
-  .tdet table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
-  .tdet th:nth-child(1) { width: 36%; } .tdet th:nth-child(2) { width: 20%; } .tdet th:nth-child(3) { width: 26%; }
-  .tdet td, .tdet th { border-bottom: 1px solid #eef1f5; padding: 4px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
-  .tdet th { color: var(--muted); font-weight: 400; }
-  .tdet .uds { background: var(--blue-l); border: 1px solid #c9dbf0; border-radius: 10px; padding: 8px 12px; margin-top: 8px; font-size: 14px; white-space: pre-wrap; }
-  @media (max-width: 640px) {
-    .trow { grid-template-columns: 74px 70px 1fr; }
-    .trow > :nth-child(2), .trow > :nth-child(4), .trow > :nth-child(5), .trow > :nth-child(6) { display: none; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  header { background: linear-gradient(135deg, var(--blue-d), var(--blue)); color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.18); white-space: nowrap; }
+  .chip.on { background: #3fa86b; } .chip.err { background: #d0533f; }
+  #chipRec { background: #d0533f; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fff; margin-right: 5px; vertical-align: 1px; animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  details > summary { cursor: pointer; font-weight: 600; color: var(--blue-d); }
+  details.card > summary { font-size: 16px; }
+  #stat { flex-basis: 100%; min-height: 1.5em; text-align: right; font-size: 12px; opacity: .92; font-family: var(--mono); }
+  #chipRec { visibility: hidden; } #chipRec.show { visibility: visible; }
+  nav { display: flex; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; overflow-x: auto; }
+  nav button { flex: 1; min-width: 64px; border: 0; background: none; padding: 11px 6px; font-size: 15px; color: var(--muted); border-bottom: 3px solid transparent; cursor: pointer; }
+  nav button.on { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+  main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 40px; }
+  section { display: none; } section.on { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .sticktop { position: sticky; top: 55px; z-index: 4; box-shadow: 0 6px 16px rgba(20, 40, 80, .12); }
+  .sticktop #diagOut { max-height: 36vh; overflow-y: auto; }
+  .modal { position: fixed; inset: 0; background: rgba(10, 22, 44, .48); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 60; }
+  .modal[hidden] { display: none; }
+  .modal-box { width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; margin: 0; }
+  .markstext { white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: 12px; background: rgba(20, 40, 80, .05); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 44vh; overflow: auto; }
+  .mkrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .mkrow .mkt { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .mkrow input { flex: 1; min-width: 100px; }
+  .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--blue-d); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  label { display: inline-flex; align-items: center; gap: 6px; }
+  .fld { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+  input, select, button { font: inherit; }
+  input[type=text], input[type=number], select, textarea { padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); min-width: 0; }
+  textarea { font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); }
+  input.mono { font-family: var(--mono); }
+  button.b { padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--blue); background: #fff; color: var(--blue); cursor: pointer; white-space: nowrap; }
+  button.b.p { background: var(--blue); color: #fff; }
+  button.b.r { border-color: var(--bad); color: var(--bad); }
+  button.b:disabled { opacity: .45; cursor: default; }
+  .ctrlrow select, .ctrlrow input[type=text], .ctrlrow .b { height: 40px; }
+  .ctrlrow select { padding-top: 0; padding-bottom: 0; }
+  .tgl .t-on { display: none; }
+  .tgl input:checked ~ .t-off { display: none; }
+  .tgl input:checked ~ .t-on { display: inline; }
+  .hint { font-size: 13px; color: var(--muted); }
+  .warn { color: var(--warn); } .bad { color: var(--bad); } .good { color: var(--ok); }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .kv div { background: var(--blue-l); border-radius: 8px; padding: 6px 10px; }
+  .kv b { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+  .kv span { font-family: var(--mono); }
+  .kv3 { grid-template-columns: repeat(3, 1fr); }
+  .kv3 div { padding: 4px 8px; }
+  .seg { display: inline-flex; border: 1.5px solid var(--blue); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; color: var(--blue); padding: 6px 12px; cursor: pointer; }
+  .seg button.on { background: var(--blue); color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+  th { text-align: left; font-family: inherit; font-weight: 600; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); padding: 4px 6px; position: sticky; top: 0; background: var(--card); }
+  td { padding: 3px 6px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+  td.d { word-break: normal; overflow-wrap: anywhere; }
+  th { white-space: nowrap; }
+  tr.tx td { color: var(--blue-d); }
+  .ch { background: var(--hl); border-radius: 2px; }
+  .tbl { max-height: 65vh; overflow: auto; }
+  .r { text-align: right; }
+  .sendrow { display: grid; grid-template-columns: auto minmax(120px, 180px) 1fr auto; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
+  .sendrow:first-child { border-top: 0; }
+  .sendrow .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 4px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar { height: 8px; background: var(--blue-l); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--blue); width: 0; }
+  #log, #fLog { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--muted); }
+  #gate { position: fixed; inset: 0; z-index: 100; background: linear-gradient(135deg, var(--blue-d), var(--blue)); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #gate .gatebox { background: var(--card); border-radius: 14px; padding: 24px 22px; width: 100%; max-width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,.25); text-align: center; }
+  #gate h2 { margin: 0 0 4px; color: var(--blue-d); }
+  #gate p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  #gate input { width: 100%; text-align: center; font-size: 18px; letter-spacing: 2px; margin-bottom: 12px; }
+  #gate button { width: 100%; padding: 11px; }
+  .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .fbtn { display: inline-block; padding: 9px 16px; border-radius: 8px; border: 1.5px solid var(--blue); background: var(--blue); color: #fff; cursor: pointer; white-space: nowrap; font-weight: 600; }
+  .fbtn:active { opacity: .85; }
+  #fSteps .fstep { padding: 3px 0; font-size: 13px; }
+  #fSteps .fstep.ok { color: var(--ok); } #fSteps .fstep.run { color: var(--blue); font-weight: 600; } #fSteps .fstep.fail { color: var(--bad); font-weight: 600; }
+  ol { padding-left: 20px; margin: 6px 0; } li { margin: 3px 0; }
+  @media (max-width: 899px) { input[type=text], input[type=number], select { font-size: 16px; } .ctrlrow select, .ctrlrow input[type=text], .ctrlrow .b { height: 41px; } }
+  @media (max-width: 600px) {
+    main { padding: 10px 10px 40px; }
+    .hide-s { display: none; }
+    table { font-size: 12px; }
+    .sendrow { grid-template-columns: auto minmax(64px, 100px) 1fr auto; gap: 6px; }
+    nav button { font-size: 14px; min-width: 56px; }
   }
+  .tgl.off { opacity: .45; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="hero">
-    <h1>🔧 售后诊断助手<span class="tag">内部版</span></h1>
-    <p>制动控制模块 DTC 查询 · 报文数据分析</p>
-    <p>👇 先选车型，再选功能</p>
-  </div>
-
-  <div class="card lock" id="lock">
-    <div class="step" style="justify-content:center"><h2>🔒 请输入 6 位访问密码</h2></div>
-    <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
-    <div class="err" id="pinErr"></div>
-  </div>
-
-  <div id="app" hidden>
-    <div class="card">
-      <div class="step"><div class="num">1</div><h2>选择车型</h2></div>
-      <div class="grid" id="models"></div>
-    </div>
-
-    <div class="card disabled" id="s2">
-      <div class="step"><div class="num">2</div><h2>选择功能</h2><span class="cur" id="cur"></span></div>
-      <div class="fns">
-        <button data-v="dtc">🔍 故障码查询<small>输入 DTC 查含义、原因、维修建议</small></button>
-        <button data-v="log">📈 数据分析<small>读取 blf / asc 报文、识别故障码、画曲线</small></button>
-      </div>
-    </div>
-
-    <!-- 故障码查询 -->
-    <div id="vDtc" hidden>
-      <div class="card">
-        <div class="step"><div class="num">3</div><h2>输入 DTC 码</h2></div>
-        <form class="search" id="form" autocomplete="off">
-          <input class="q" id="q" placeholder="如 U210088 / E10088 / E100" enterkeyhint="search" spellcheck="false">
-          <button type="submit">查询</button>
-        </form>
-        <p class="hint">完整显示码或高中低字节 → 直接定位；只输高中字节 → 列出全部备选。“0x”前缀和空格会自动忽略。</p>
-      </div>
-      <div class="card" id="s3" hidden>
-        <div class="step"><div class="num">4</div><h2 id="s3t">查询结果</h2></div>
-        <div id="out"></div>
-      </div>
-      <div class="tip">💡 维修前请先确认车型与故障码对应正确</div>
-      <div class="notes">
-        <p>⚠️ 显示码为诊断仪上显示的码（如 U210088），高中字节/低字节为十六进制（如 E100 + 88）。</p>
-        <p>⚠️ 微信内打不开？点右上角 ··· → <b>在浏览器中打开</b>。</p>
-      </div>
-    </div>
-
-    <!-- 数据分析 -->
-    <div id="vLog" hidden>
-      <div class="card">
-        <div class="step"><div class="num">3</div><h2>打开报文</h2><span class="cur" id="dbcCur"></span></div>
-        <label class="drop" id="drop">
-          <!-- 不设 accept：iOS 不认识 .blf 扩展名，会把文件置灰无法选择；扩展名在读取时检查 -->
-          <input type="file" id="file" hidden>
-          📂 点击选择或拖入 <b>.blf</b> / <b>.asc</b> 报文文件<br><small>文件只在本机浏览器内解析，不会上传</small>
-        </label>
-        <div class="bar" id="bar" hidden><div></div></div>
-        <div id="info"></div>
-      </div>
-
-      <div id="res" hidden>
-        <div class="card">
-          <div class="step"><div class="num">4</div><h2>故障码识别</h2></div>
-          <div id="dtcOut"></div>
-        </div>
-        <div class="card" id="susCard" hidden>
-          <div class="step"><h2>⚠️ 疑似异常的状态信号</h2></div>
-          <p class="hint" style="margin:-8px 0 10px">报文中出现过“故障 / 报警 / 无效”类取值的信号，点一下加入曲线。</p>
-          <div class="chips" id="susOut"></div>
-        </div>
-        <div class="card">
-          <div class="step"><div class="num">5</div><h2>信号曲线</h2></div>
-          <div class="sbox">
-            <input class="sq" id="sq" placeholder="搜索信号名 / 报文名 / 注释，如 VehicleSpeed、轮速、IBCU_17A" autocomplete="off" spellcheck="false">
-            <div class="drop-list" id="sl" hidden></div>
-          </div>
-          <div class="chips" id="chips" style="margin-top:10px"></div>
-          <div class="tools">
-            <button id="zin">＋ 放大</button><button id="zout">－ 缩小</button><button id="zall">⟲ 全部</button>
-            <span class="sp"></span>
-            <button id="hdec">窗口变矮</button><button id="hinc">窗口变高</button><button id="clr">清空曲线</button>
-          </div>
-          <div class="plot" id="plot"></div>
-          <p class="hint">滚轮 / 双指缩放时间轴，按住拖动平移，双击复位；鼠标悬停查看各信号当前值。</p>
-        </div>
-        <div class="card">
-          <div class="step"><div class="num">6</div><h2>报文提取</h2></div>
-          <div class="tf">
-            <input id="tq" placeholder="筛选 ID：788 7DF / 700-7FF / IBCU_17A，留空显示全部" autocomplete="off" spellcheck="false">
-            <button id="tAll">全部</button><button id="tDiag">仅诊断报文</button>
-            <span class="cnt" id="tCnt"></span>
-          </div>
-          <div class="tgrid"><div class="tleft">
-          <div class="trace" id="trace">
-            <div class="trow thead"><span>时间 s</span><span>通道</span><span>ID</span><span>名称</span><span>方向</span><span>长度</span><span>数据</span></div>
-            <div class="tview" id="tv" tabindex="0"><div id="tsp"></div></div>
-          </div>
-          <div class="selbar">已选 <b id="selN">0</b> 帧（发给 AI 助手）<button id="selMode">多选：关</button><button id="selAll">全选筛选结果</button><button id="selClr">清除选择</button><button id="toAI" class="on">📋 复制给 AI 助手</button></div>
-          <p class="hint">点一行查看解析：DBC 报文显示各信号值；诊断报文（蓝色加粗）按通用诊断知识解释，如 7F 负响应的含义，↑ ↓ 键切换。挑选报文给 AI：打开“多选”后点一行勾选 / 取消，<b>按住左侧勾选框上下滑动</b>可连续选择（电脑上直接按住拖动），拖到列表边缘会自动滚动；电脑上也可用 Shift+点击 选一段、Ctrl（⌘）+点击 逐条增减。</p>
-          </div>
-          <div class="tdet" id="tdet"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" id="aiCard" hidden>
-      <div class="step"><h2><img src="data:image/png;base64,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" alt="" style="height:1.5em;width:1.5em;vertical-align:-.38em;margin-right:4px;border-radius:6px">AI 助手</h2><span class="cur">接入任意大模型，自备 API Key</span></div>
-      <div id="ai"></div>
-    </div>
+<div id="gate">
+  <div class="gatebox">
+    <h2>CAN 工具</h2>
+    <p>输入密码解锁</p>
+    <input type="password" inputmode="numeric" id="gatePin" class="mono" placeholder="密码" autocomplete="off">
+    <button class="b p" id="gateBtn">解锁</button>
+    <div class="hint" id="gateErr" style="margin-top:10px"></div>
   </div>
 </div>
+<header>
+  <h1>CAN 工具</h1>
+  <span class="chip" id="chipDev">未连接</span>
+  <span class="chip" id="chipBus">通道关闭</span>
+  <span class="chip" id="chipRec"><i class="dot"></i>录制中</span>
+  <span id="stat"></span>
+</header>
+<nav id="tabs">
+  <button data-t="rec" class="on">录制</button>
+  <button data-t="trace">查看</button>
+  <button data-t="send">诊断</button>
+  <button data-t="flash">刷写</button>
+  <button data-t="cfg">设置</button>
+</nav>
+<main>
 
-<script>
-// 报文读取与解析：BLF / ASC → 帧表；DBC 信号解码；ISO-TP 重组与 UDS 故障码识别。
-// 纯函数，浏览器和 Node（自测）通用。
-const CanLog = (() => {
-  const EXT = 0x80000000;
+<section id="rec" class="on">
+  <div class="card">
+    <div class="row">
+      <button class="b p" id="btnConn">连接设备</button>
+      <span class="hint" id="devInfo" style="flex:1;min-width:150px">用 USB 数据线连上 CANable 后点“连接设备”。</span>
+    </div>
+    <div class="row">
+      <button class="b" id="btnChan" disabled>打开通道</button>
+      <button class="b" id="btnRec">开始录制</button>
+      <button class="b" id="btnMark" disabled>打标记</button>
+    </div>
+    <div class="hint" id="noApi" hidden></div>
+    <div class="kv kv3" style="margin-top:10px">
+      <div><b>时长</b><span id="rDur">—</span></div>
+      <div><b>帧数</b><span id="rCnt">—</span></div>
+      <div><b>标记</b><span id="rMarks">—</span></div>
+    </div>
+    <div class="hint" style="margin-top:8px">录制在这台手机 / 电脑的浏览器里，关掉网页就没了，录完记得保存。</div>
+    <div id="markList"></div>
+  </div>
 
-  // ---- 帧表：按列存放，省内存 ----
-  class Frames {
-    constructor() {
-      this.n = 0; this.cap = 0; this.dlen = 0;
-      this.grow(1 << 14);
-      this.data = new Uint8Array(1 << 20);
-    }
-    grow(cap) {
-      const re = (A, old) => { const a = new A(cap); if (old) a.set(old.subarray(0, this.n)); return a; };
-      this.t = re(Float64Array, this.t); this.id = re(Uint32Array, this.id); this.off = re(Uint32Array, this.off);
-      this.len = re(Uint8Array, this.len); this.ch = re(Uint8Array, this.ch); this.fl = re(Uint8Array, this.fl);
-      this.cap = cap;
-    }
-    // fl：1=发送 2=CAN FD 4=远程帧
-    push(t, id, ch, fl, bytes) {
-      if (this.n === this.cap) this.grow(this.cap * 2);
-      if (this.dlen + bytes.length > this.data.length) {
-        const d = new Uint8Array(this.data.length * 2); d.set(this.data.subarray(0, this.dlen)); this.data = d;
-      }
-      const i = this.n++;
-      this.t[i] = t; this.id[i] = id; this.ch[i] = ch; this.fl[i] = fl;
-      this.len[i] = bytes.length; this.off[i] = this.dlen;
-      this.data.set(bytes, this.dlen); this.dlen += bytes.length;
-    }
-    bytes(i) { return this.data.subarray(this.off[i], this.off[i] + this.len[i]); }
-    // 结束读取：时间从 0 开始、按时间排序（多通道 BLF 偶有乱序）、建 ID 索引
-    finish() {
-      const n = this.n;
-      for (const k of ['t', 'id', 'off', 'len', 'ch', 'fl']) this[k] = this[k].slice(0, n);
-      this.data = this.data.slice(0, this.dlen);
-      let sorted = true;
-      for (let i = 1; i < n; i++) if (this.t[i] < this.t[i - 1]) { sorted = false; break; }
-      if (!sorted) {
-        const ord = Uint32Array.from({ length: n }, (_, i) => i).sort((a, b) => this.t[a] - this.t[b]);
-        for (const k of ['t', 'id', 'off', 'len', 'ch', 'fl']) {
-          const src = this[k], a = new src.constructor(n);
-          for (let i = 0; i < n; i++) a[i] = src[ord[i]];
-          this[k] = a;
-        }
-      }
-      this.t0 = n ? this.t[0] : 0;
-      for (let i = 0; i < n; i++) this.t[i] -= this.t0;
-      this.dur = n ? this.t[n - 1] : 0;
-      const cnt = new Map();
-      for (let i = 0; i < n; i++) cnt.set(this.id[i], (cnt.get(this.id[i]) || 0) + 1);
-      this.byId = new Map();
-      for (const [id, c] of cnt) this.byId.set(id, new Uint32Array(c));
-      const pos = new Map();
-      for (let i = 0; i < n; i++) {
-        const id = this.id[i], p = pos.get(id) || 0;
-        this.byId.get(id)[p] = i; pos.set(id, p + 1);
-      }
-      return this;
-    }
-  }
 
-  // ---- BLF（Vector 二进制日志）----
-  const td = new TextDecoder('latin1');
-  const sig4 = (u8, p) => td.decode(u8.subarray(p, p + 4));
+  <div class="card">
+    <h2>保存数据</h2>
+    <div class="row">
+      <select id="range" aria-label="保存范围"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select>
+      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:120px">
+      <div class="fld" id="fMarks" hidden>从 / 到
+        <span style="display:flex;gap:6px"><select id="mFrom"></select><select id="mTo"></select></span></div>
+      <div class="fld" id="fLast" hidden>最后多少秒<input type="number" id="lastSec" value="60" min="1" style="width:100px"></div>
+      <div class="fld" id="fCustom" hidden>从 / 到（秒）
+        <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
+    </div>
+    <div class="row">
+      <select id="recFmt" aria-label="保存格式"><option value="blf" selected>BLF</option><option value="asc">ASC</option></select>
+      <button class="b p" id="btnSave" disabled>下载</button>
+      <button class="b" id="btnShare" disabled>分享</button>
+      <button class="b" id="btnView" disabled>查看</button>
+      <button class="b" id="btnMarks" disabled>导出标记清单</button>
+    </div>
+    <div class="hint">下载的数据可以直接用 CANalyzer 打开，也可以点“查看”在本页的离线数据里看。分享会调起手机的分享菜单（企业微信等）；浏览器不支持文件分享时，会自动改成下载。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
+  </div>
 
-  async function inflate(u8) {
-    const ds = new DecompressionStream('deflate');    // BLF 用 zlib 封装，对应 'deflate'
-    const out = new Response(new Blob([u8]).stream().pipeThrough(ds));
-    return new Uint8Array(await out.arrayBuffer());
-  }
+  <details class="card" id="busBox">
+    <summary>总线状态</summary>
+    <div class="kv" style="margin-top:10px">
+      <div><b>总线</b><span id="sBus">—</span></div>
+      <div><b>帧率</b><span id="sFps">—</span></div>
+      <div><b>负载率（估算）</b><span id="sLoad">—</span></div>
+      <div><b>错误计数 发/收</b><span id="sErr">—</span></div>
+      <div><b>丢帧</b><span id="sDrop">—</span></div>
+      <div><b>板子时钟误差</b><span id="sClk">—</span></div>
+    </div>
+    <div id="log"></div>
+  </details>
+</section>
 
-  function findLOBJ(u8, p) {
-    for (const end = u8.length - 3; p < end; p++)
-      if (u8[p] === 0x4C && u8[p + 1] === 0x4F && u8[p + 2] === 0x42 && u8[p + 3] === 0x4A) return p;
-    return -1;
-  }
+<section id="trace">
+  <div class="row" style="margin-bottom:10px">
+    <div class="seg" id="tmode"><button data-v="online" class="on">在线报文</button><button data-v="offline">离线数据</button></div>
+    <span class="hint" id="tmodeHint"></span>
+  </div>
+  <div id="onlineBox">
+  <div class="card">
+    <div class="row">
+      <div class="seg" id="view"><button data-v="fixed" class="on">按 ID</button><button data-v="scroll">滚动</button></div>
+      <button class="b" id="btnPause">暂停</button>
+      <button class="b" id="btnClear">清空</button>
+      <input type="text" id="filter" class="mono" placeholder="过滤 ID，如 7E0,7E8 或 700-7FF" style="flex:1;min-width:180px">
+    </div>
+    <div class="hint" id="traceInfo"></div>
+  </div>
+  <div class="card tbl" id="traceBox"></div>
+  </div>
+  <div id="offlineBox" hidden>
+    <iframe id="viewerFrame" title="离线数据" style="width:100%;border:0;border-radius:12px;background:var(--bg);display:block"></iframe>
+  </div>
+</section>
 
-  // 解析一段（解压后的）对象流；返回未完整的尾部起点
-  function blfObjects(u8, fr) {
-    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-    let p = 0;
-    for (;;) {
-      p = findLOBJ(u8, p);
-      if (p < 0 || p + 16 > u8.length) return p < 0 ? Math.max(0, u8.length - 3) : p;
-      const hsize = dv.getUint16(p + 4, true);
-      const osize = dv.getUint32(p + 8, true), type = dv.getUint32(p + 12, true);
-      if (osize < 16) { p += 4; continue; }
-      if (p + osize > u8.length) return p;
-      const flags = dv.getUint32(p + 16, true);
-      const ts = Number(dv.getBigUint64(p + 24, true));       // V1 / V2 对象头的时间戳都在偏移 24
-      const t = ts * (flags === 1 ? 1e-5 : 1e-9);
-      const b = p + hsize;
-      if (type === 1 || type === 86) {                          // CAN_MESSAGE / CAN_MESSAGE2
-        const ch = dv.getUint16(b, true), f = u8[b + 2], dlc = u8[b + 3], id = dv.getUint32(b + 4, true);
-        const n = Math.min(dlc, 8);
-        fr.push(t, id, ch, (f & 1) | (f & 0x80 ? 4 : 0), f & 0x80 ? new Uint8Array(0) : u8.subarray(b + 8, b + 8 + n));
-      } else if (type === 100) {                                // CAN_FD_MESSAGE
-        const ch = dv.getUint16(b, true), f = u8[b + 2], id = dv.getUint32(b + 4, true);
-        const fdf = u8[b + 13], n = Math.min(u8[b + 14], 64);
-        fr.push(t, id, ch, (f & 1) | (fdf & 1 ? 2 : 0) | (f & 0x80 ? 4 : 0), u8.subarray(b + 20, b + 20 + n));
-      } else if (type === 101) {                                // CAN_FD_MESSAGE_64
-        const ch = u8[b], n = Math.min(u8[b + 2], 64), id = dv.getUint32(b + 4, true);
-        const f = dv.getUint32(b + 12, true), dir = u8[b + 34];
-        fr.push(t, id, ch, (dir === 1 ? 1 : 0) | (f & 0x1000 ? 2 : 0) | (f & 0x10 ? 4 : 0), u8.subarray(b + 40, b + 40 + n));
-      }
-      p += osize;
-    }
-  }
+<section id="send">
+  <div class="hint" id="diagHint" style="margin-bottom:10px"></div>
 
-  async function readBLF(buf, progress) {
-    const u8 = new Uint8Array(buf), dv = new DataView(buf);
-    if (sig4(u8, 0) !== 'LOGG') throw new Error('不是有效的 BLF 文件');
-    const fr = new Frames();
-    let p = dv.getUint32(4, true), tail = new Uint8Array(0), k = 0;
-    while (p + 16 <= u8.length) {
-      if (sig4(u8, p) !== 'LOBJ') { const q = findLOBJ(u8, p + 1); if (q < 0) break; p = q; continue; }
-      const osize = dv.getUint32(p + 8, true), type = dv.getUint32(p + 12, true);
-      if (osize < 16 || p + osize > u8.length) break;
-      if (type === 10) {                                        // LOG_CONTAINER
-        const method = dv.getUint16(p + 16, true);
-        let body = u8.subarray(p + 32, p + osize);
-        if (method === 2) body = await inflate(body);
-        else if (method !== 0) body = null;
-        if (body) {
-          const all = new Uint8Array(tail.length + body.length);
-          all.set(tail); all.set(body, tail.length);
-          tail = all.slice(blfObjects(all, fr));
-        }
-      } else {                                                  // 未打包的对象
-        blfObjects(u8.subarray(p, p + osize), fr);
-      }
-      p += osize + (osize % 4);
-      if (progress && (++k & 31) === 0) { progress(p / u8.length); await new Promise(r => setTimeout(r)); }
-    }
-    return fr.finish();
-  }
+  <div class="card">
+    <h2>控制器</h2>
+    <div class="row ctrlrow" style="align-items:flex-end">
+      <div class="fld" style="flex:1;min-width:140px">选择控制器
+        <select id="ctrlSel"></select></div>
+      <button class="b" id="ctrlAdd">新增</button>
+      <button class="b r" id="ctrlDel">删除</button>
+    </div>
+    <div class="row ctrlrow" style="align-items:flex-end">
+      <div class="fld" style="flex:1;min-width:150px">请求 / 响应 ID<input type="text" class="mono" id="cPair" placeholder="如 780/788"></div>
+      <div class="fld">功能寻址 ID<input type="text" class="mono" id="cFunc" placeholder="如 7DF" style="width:92px"></div>
+      <div class="fld">填充字节<input type="text" class="mono" id="cPad" placeholder="00" style="width:64px"></div>
+    </div>
+    <div class="row">
+      <label class="tgl"><input type="checkbox" id="cFd" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
+      <label class="tgl"><input type="checkbox" id="cBrs" checked><span class="t-off">BRS 关</span><span class="t-on">BRS 开</span></label>
+      <label class="tgl"><input type="checkbox" id="cExt"><span class="t-off">标准帧（11 位 ID）</span><span class="t-on">扩展帧（29 位 ID）</span></label>
+    </div>
+    <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器。保密内容不进仓库。</div>
+  </div>
 
-  // ---- ASC（Vector 文本日志）----
-  const FD_LEN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64];
-  async function readASC(text, progress) {
-    const fr = new Frames();
-    let hex = true, rel = false, last = 0;
-    const lines = text.split(/\r?\n/);
-    const b = new Uint8Array(64);
-    for (let li = 0; li < lines.length; li++) {
-      const s = lines[li].trim();
-      if (!s) continue;
-      if (/^base\s/i.test(s)) { hex = /^base\s+hex/i.test(s); rel = /timestamps\s+relative/i.test(s); continue; }
-      if (!/^\d/.test(s)) continue;
-      const tk = s.split(/\s+/);
-      let t = parseFloat(tk[0]);
-      if (!isFinite(t)) continue;
-      if (rel) { t += last; last = t; }
-      const pid = v => {
-        const ext = /x$/i.test(v), id = parseInt(ext ? v.slice(0, -1) : v, hex ? 16 : 10);
-        return isNaN(id) ? -1 : (ext ? (id | EXT) >>> 0 : id);
-      };
-      if (/^CANFD$/i.test(tk[1])) {
-        // t CANFD ch Rx|Tx id [报文名] brs esi dlc 长度 数据...
-        // 也兼容某些记录仪的非标准写法：t CANFD ch id Rx|Tx brs esi d dlc(十进制) 长度 数据...
-        const swap = /^(rx|tx)$/i.test(tk[4]) && !/^(rx|tx)$/i.test(tk[3]);
-        const ch = +tk[2], dir = tk[swap ? 4 : 3], id = pid(tk[swap ? 3 : 4]);
-        let k = 5;
-        if (!/^[01]$/.test(tk[k])) k++;
-        if (swap && /^d$/i.test(tk[k + 2]) && FD_LEN[+tk[k + 3]] === +tk[k + 4]) k++;
-        const n = parseInt(tk[k + 3], 10);
-        if (id < 0 || !(n >= 0) || n > 64) continue;
-        for (let i = 0; i < n; i++) b[i] = parseInt(tk[k + 4 + i], 16);
-        fr.push(t, id, ch, (/^tx/i.test(dir) ? 1 : 0) | 2, b.subarray(0, n));
-      } else if (/^\d+$/.test(tk[1]) && /^(rx|tx)$/i.test(tk[3])) {
-        // t ch id Rx|Tx d|r dlc 数据...
-        const ch = +tk[1], id = pid(tk[2]);
-        if (id < 0) continue;
-        if (/^r$/i.test(tk[4])) { fr.push(t, id, ch, (/^tx/i.test(tk[3]) ? 1 : 0) | 4, b.subarray(0, 0)); continue; }
-        if (!/^d$/i.test(tk[4])) continue;
-        const n = Math.min(parseInt(tk[5], 16), 8);
-        for (let i = 0; i < n; i++) b[i] = parseInt(tk[6 + i], 16);
-        fr.push(t, id, ch, /^tx/i.test(tk[3]) ? 1 : 0, b.subarray(0, n));
-      }
-      if (progress && (li & 0xFFFF) === 0) { progress(li / lines.length); await new Promise(r => setTimeout(r)); }
-    }
-    return fr.finish();
-  }
+  <div class="card sticktop">
+    <h2>诊断应答</h2>
+    <div id="diagOut" class="hint">点下面会话区的按钮，或在“手动发送”里发诊断指令，结果显示在这里。</div>
+  </div>
 
-  async function read(name, buf, progress) {
-    if (/\.blf$/i.test(name)) return readBLF(buf, progress);
-    if (/\.asc$/i.test(name)) return readASC(new TextDecoder('latin1').decode(buf), progress);
-    throw new Error('只支持 .blf 和 .asc 文件');
-  }
+  <div class="card">
+    <h2>会话 / 安全 / 复位</h2>
+    <div class="row" id="diagBtns">
+      <button class="b" data-uds="10 01">默认会话</button>
+      <button class="b" data-uds="10 03">扩展会话</button>
+      <button class="b" data-uds="10 02">编程会话</button>
+      <button class="b" data-uds="11 01">硬复位</button>
+      <button class="b" data-uds="11 03">软复位</button>
+      <button class="b" id="btnTp">保持在线：关</button>
+    </div>
+    <div class="row" style="border-top:1px dashed var(--line);padding-top:10px">
+      <button class="b p" id="btnSec">安全访问解锁</button>
+      <span class="hint" id="secSt"></span>
+    </div>
+  </div>
 
-  // ---- DBC 信号解码 ----
-  function rawValue(d, s) {
-    let v = 0;
-    if (s.bo === 1) {                                           // Intel：起始位为最低位
-      for (let i = s.bl - 1; i >= 0; i--) {
-        const p = s.sb + i, by = p >> 3;
-        if (by >= d.length) return null;
-        v = v * 2 + ((d[by] >> (p & 7)) & 1);
-      }
-    } else {                                                    // Motorola：起始位为最高位，锯齿编号
-      let p = s.sb;
-      for (let i = 0; i < s.bl; i++) {
-        const by = p >> 3;
-        if (by >= d.length) return null;
-        v = v * 2 + ((d[by] >> (p & 7)) & 1);
-        p = (p & 7) === 0 ? p + 15 : p - 1;
-      }
-    }
-    if (s.fl) {
-      const dv = new DataView(new ArrayBuffer(8));
-      if (s.fl === 1) { dv.setUint32(0, v); return dv.getFloat32(0); }
-      dv.setUint32(0, Math.floor(v / 2 ** 32)); dv.setUint32(4, v % 2 ** 32); return dv.getFloat64(0);
-    }
-    if (s.s && v >= 2 ** (s.bl - 1)) v -= 2 ** s.bl;
-    return v;
-  }
+  <div class="card">
+    <h2>故障码</h2>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <button class="b p" id="btnReadDtc">读故障码</button>
+      <button class="b r" id="btnClrDtc">清故障码</button>
+      <div class="fld" style="flex:0 0 auto">子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:84px"></div>
+    </div>
+    <div class="hint" id="dtcHint">子功能默认 <code>02 FF</code>（按状态掩码读）。读出的故障码会对照“查看 → 离线数据”里加载的诊断问卷显示含义。</div>
+    <div id="dtcBox" style="margin-top:8px"></div>
+  </div>
 
-  // 解码某报文的一个信号 → {t: Float64Array, raw: Float64Array, v: Float64Array}
-  function decodeSignal(fr, msg, s) {
-    const idx = fr.byId.get(msg.ext ? (msg.id | EXT) >>> 0 : msg.id);
-    if (!idx) return { t: new Float64Array(0), raw: new Float64Array(0), v: new Float64Array(0) };
-    const mux = typeof s.mux === 'number' ? msg.sigs.find(x => x.mux === 'M') : null;
-    const t = new Float64Array(idx.length), raw = new Float64Array(idx.length), v = new Float64Array(idx.length);
-    let n = 0;
-    for (const i of idx) {
-      if (fr.fl[i] & 4) continue;
-      const d = fr.bytes(i);
-      if (mux && rawValue(d, mux) !== s.mux) continue;
-      const r = rawValue(d, s);
-      if (r === null) continue;
-      t[n] = fr.t[i]; raw[n] = r; v[n] = r * s.f + s.o; n++;
-    }
-    return { t: t.subarray(0, n), raw: raw.subarray(0, n), v: v.subarray(0, n) };
-  }
+  <div class="card">
+    <h2>读 / 写数据（DID）</h2>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <button class="b p" id="btnReadDid">读</button>
+      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didReadId" placeholder="如 FD54" style="width:84px"></div>
+    </div>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <button class="b r" id="btnWriteDid">写</button>
+      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didWriteId" placeholder="如 FD54" style="width:84px"></div>
+      <div class="fld" style="flex:1 1 auto;min-width:0">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01" style="width:100%"></div>
+    </div>
+  </div>
 
-  // ---- 故障码 ----
-  const hex2 = x => x.toString(16).toUpperCase().padStart(2, '0');
-  // 3 字节 → 显示码（如 0x40 0x35 0x12 → C003512）
-  function dtcText(b1, b2, b3) {
-    return 'PCBU'[b1 >> 6] + ((b1 >> 4) & 3).toString(16) + (b1 & 15).toString(16).toUpperCase() + hex2(b2) + hex2(b3);
-  }
-  const STATUS_BITS = ['当前故障', '本次循环故障', '待定', '已确认', '清码后未完成测试', '清码后曾失败', '本循环未完成测试', '请求报警灯'];
-  const statusText = st => STATUS_BITS.filter((_, i) => st & (1 << i)).join('、') || '无';
-  const isDiagId = id => (!(id & EXT) && id >= 0x700 && id <= 0x7FF) || ((id & EXT) && ((id & 0x1FFF0000) >>> 16) === 0x18DA);
+  <div class="card">
+    <h2>例程控制（31）</h2>
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
+      <button class="b p" id="btnRtn">执行</button>
+      <div class="fld" style="flex:0 0 auto">类型
+        <select id="rtnType"><option value="01">启动</option><option value="02">停止</option><option value="03">读结果</option></select></div>
+      <div class="fld" style="flex:0 0 auto">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:84px"></div>
+      <div class="fld" style="flex:1 1 auto;min-width:0">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填" style="width:100%"></div>
+    </div>
+  </div>
 
-  // ISO-TP 重组 → [{t, id, ch, p: Uint8Array, fi: [组成它的帧序号]}]
-  function isotp(fr) {
-    const out = [], st = new Map();
-    for (const [id, idx] of fr.byId) {
-      if (!isDiagId(id)) continue;
-      for (const i of idx) {
-        const d = fr.bytes(i), key = id + ':' + fr.ch[i];
-        if (!d.length) continue;
-        const type = d[0] >> 4;
-        if (type === 0) {
-          let n = d[0] & 15, s = 1;
-          if (n === 0 && d.length > 8) { n = d[1]; s = 2; }
-          if (n && s + n <= d.length) out.push({ t: fr.t[i], id, ch: fr.ch[i], p: d.slice(s, s + n), fi: [i] });
-          st.delete(key);
-        } else if (type === 1) {
-          let n = ((d[0] & 15) << 8) | d[1], s = 2;
-          if (n === 0) { n = ((d[2] << 24) | (d[3] << 16) | (d[4] << 8) | d[5]) >>> 0; s = 6; }
-          if (n > 0 && n < 1 << 20) {
-            const buf = new Uint8Array(n), k = Math.min(n, d.length - s);
-            buf.set(d.subarray(s, s + k));
-            st.set(key, { t: fr.t[i], buf, got: k, sn: 1, fi: [i] });
-          }
-        } else if (type === 2) {
-          const x = st.get(key);
-          if (!x) continue;
-          if ((d[0] & 15) !== (x.sn & 15)) { st.delete(key); continue; }
-          const k = Math.min(x.buf.length - x.got, d.length - 1);
-          x.buf.set(d.subarray(1, 1 + k), x.got); x.got += k; x.sn++; x.fi.push(i);
-          if (x.got >= x.buf.length) { out.push({ t: x.t, id, ch: fr.ch[i], p: x.buf, fi: x.fi }); st.delete(key); }
-        }
-      }
-    }
-    return out.sort((a, b) => a.t - b.t);
-  }
+  <div class="card">
+    <h2>常用指令 <span class="hint" style="font-weight:400">（名称 + UDS 数据，自动保存在本机；通过 ISO-TP 发给当前控制器并解析应答）</span></h2>
+    <div id="sendRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 加一条</button></div>
+  </div>
 
-  // 找故障码：诊断应答（19 服务）+ DBC 中广播的 DTC 字节信号
-  // 返回 {dtcs: [{code, b, st, src, ecu, t, n}], events: [{t, ecu, text}]}
-  function findDTCs(fr, db) {
-    const byKey = new Map(), events = [];
-    const ecuOf = id => {
-      const m = db && db.msgs.find(m => ((m.ext ? (m.id | EXT) >>> 0 : m.id)) === id);
-      return m ? m.tx : '0x' + (id & 0x1FFFFFFF).toString(16).toUpperCase();
-    };
-    const add = (b1, b2, b3, st, src, ecu, t) => {
-      if (!(b1 | b2 | b3)) return;
-      const code = dtcText(b1, b2, b3), k = ecu + code;
-      const x = byKey.get(k);
-      if (x) { x.st |= st; x.n++; x.tl = t; } else byKey.set(k, { code, b: hex2(b1) + hex2(b2) + ' ' + hex2(b3), st, src, ecu, t, tl: t, n: 1 });
-    };
-    for (const m of isotp(fr)) {
-      const p = m.p, ecu = ecuOf(m.id);
-      if (p[0] === 0x59 && [0x02, 0x0A, 0x0F, 0x13, 0x15].includes(p[1])) {
-        for (let i = 3; i + 4 <= p.length; i += 4)
-          if (p[1] !== 0x0A || (p[i + 3] & 0x0D)) add(p[i], p[i + 1], p[i + 2], p[i + 3], '诊断应答 19 ' + hex2(p[1]), ecu, m.t);
-        events.push({ t: m.t, ecu, text: `读故障码应答（19 ${hex2(p[1])}），${Math.max(0, (p.length - 3) >> 2)} 条` });
-      } else if (p[0] === 0x59 && [0x04, 0x06].includes(p[1]) && p.length >= 6) {
-        add(p[2], p[3], p[4], p[5], '诊断应答 19 ' + hex2(p[1]), ecu, m.t);
-      } else if (p[0] === 0x54) {
-        events.push({ t: m.t, ecu, text: '清除故障码成功（14 服务）' });
-      } else if (p[0] === 0x7F && p[1] === 0x19) {
-        events.push({ t: m.t, ecu, text: '读故障码被拒绝，否定码 0x' + hex2(p[2]) });
-      }
-    }
-    // 广播信号：XXX_DTC1_HighByte / MiddByte / LowByte / Status
-    if (db) for (const msg of db.msgs) {
-      const groups = {};
-      for (const s of msg.sigs) {
-        const m = s.n.match(/^(.*?)_?(High|Midd|Middle|Mid|Low)_?Byte$/i) || s.n.match(/^(.*DTC\d*)_?(Status|Sts)$/i);
-        if (m) (groups[m[1]] = groups[m[1]] || {})[m[2].toLowerCase()[0] === 'm' ? 'm' : m[2].toLowerCase()[0]] = s;
-      }
-      for (const [g, x] of Object.entries(groups)) {
-        if (!x.h || !x.m || !x.l) continue;
-        const idx = fr.byId.get(msg.ext ? (msg.id | EXT) >>> 0 : msg.id);
-        if (!idx) continue;
-        for (const i of idx) {
-          const d = fr.bytes(i), h = rawValue(d, x.h), md = rawValue(d, x.m), l = rawValue(d, x.l);
-          if (h === null || md === null || l === null) continue;
-          add(h, md, l, x.s ? rawValue(d, x.s) || 0 : 0, '广播信号 ' + g, msg.tx, fr.t[i]);
-        }
-      }
-    }
-    return { dtcs: [...byKey.values()].sort((a, b) => a.t - b.t), events };
-  }
+  <details class="card" id="rawBox">
+    <summary>手动发送原始帧（不走 ISO-TP）</summary>
+    <div class="hint" id="sendHint" style="margin-top:8px"></div>
+    <div class="row" style="margin-top:8px">
+      <div class="fld">发送 ID<input type="text" class="mono" id="sId" style="width:120px"></div>
+      <div class="fld">看回复 ID<input type="text" class="mono" id="sResp" placeholder="自动" style="width:120px"></div>
+      <div class="fld">循环周期 ms<input type="number" id="sCyc" min="1" style="width:100px"></div>
+    </div>
+    <div class="row">
+      <label class="tgl"><input type="checkbox" id="sExt"><span class="t-off">标准帧</span><span class="t-on">扩展帧</span></label>
+      <label class="tgl"><input type="checkbox" id="sFd"><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
+      <label class="tgl"><input type="checkbox" id="sBrs" checked><span class="t-off">BRS 关</span><span class="t-on">BRS 开</span></label>
+      <span class="hint">BRS 只对 CANFD 有效</span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <input type="text" id="rawData" class="mono" placeholder="原始数据，如 02 10 03" style="flex:1;min-width:160px">
+      <button class="b p" id="btnRawSend">发送</button>
+    </div>
+  </details>
 
-  // 疑似异常的状态信号：故障/报警类、带值描述、出现了非“正常”的取值
-  const CAND = /fail|fault|flt|err|warn|lamp|light|malfunc|invalid|defect|abnormal|故障|失效|错误|报警|异常|指示灯/i;
-  const BADV = /fail|fault|err|warn|malfunc|invalid|defect|abnormal|故障|失效|错误|报警|异常/i;
-  const ONV = /^on$|\bon\b|active|request|blink|flash|点亮|亮|闪/i;
-  const OKV = /\bno\b|\bnot\b|normal|^no|none|无|正常|未|inactive|\boff\b|\bok\b|^valid|reserved|init/i;
-  function abnormal(s, txt) {
-    if (OKV.test(txt)) return false;
-    return BADV.test(txt) || (/lamp|light|warn|indicat|报警|灯/i.test(s.n) && ONV.test(txt));
-  }
-  function suspects(fr, db) {
-    const out = [];
-    if (!db) return out;
-    for (const msg of db.msgs) {
-      if (!fr.byId.has(msg.ext ? (msg.id | EXT) >>> 0 : msg.id)) continue;
-      for (const s of msg.sigs) {
-        if (!s.vt || !CAND.test(s.n + ' ' + (s.c || ''))) continue;
-        const d = decodeSignal(fr, msg, s), seen = new Map();
-        for (let i = 0; i < d.raw.length; i++) if (!seen.has(d.raw[i])) seen.set(d.raw[i], d.t[i]);
-        for (const [r, t] of seen) {
-          const txt = s.vt[r];
-          if (txt !== undefined && abnormal(s, txt)) out.push({ msg: msg.name, sig: s.n, raw: r, text: txt, t });
-        }
-      }
-    }
-    return out.sort((a, b) => a.t - b.t);
-  }
+  <div class="card">
+    <h2>最近收发 <span class="hint" style="font-weight:400" id="respInfo"></span></h2>
+    <div class="tbl" id="respBox" style="max-height:40vh"></div>
+  </div>
+</section>
 
-  // ---- 通用诊断知识：单帧解释 ----
-  const H = b => hex2(b);
-  const hexs = (u8, a = 0, b = u8.length) => Array.from(u8.subarray(a, b), H).join(' ');
-  function tpFrame(d) {
-    if (!d.length) return '';
-    const t = d[0] >> 4;
-    if (t === 0) { const n = (d[0] & 15) || (d.length > 8 ? d[1] : 0); return `单帧（SF），有效数据 ${n} 字节`; }
-    if (t === 1) { const n = ((d[0] & 15) << 8) | d[1]; return `首帧（FF），整条报文共 ${n || ((d[2] << 24) | (d[3] << 16) | (d[4] << 8) | d[5]) >>> 0} 字节，后面还有连续帧`; }
-    if (t === 2) return `连续帧（CF），序号 ${d[0] & 15}`;
-    if (t === 3) {
-      const fs = ['继续发送（CTS）', '等待（Wait）', '溢出（Overflow），接收方缓存不足'][d[0] & 15] || '未知';
-      const st = d[2] <= 0x7F ? d[2] + ' ms' : (d[2] >= 0xF1 && d[2] <= 0xF9 ? (d[2] - 0xF0) * 100 + ' µs' : '保留值');
-      return `流控帧（FC）：${fs}，块大小 ${d[1] || '不限'}，最小间隔 ${st}`;
-    }
-    return '不是 ISO-TP 诊断帧格式';
-  }
+<section id="flash">
+  <div class="card">
+    <h2>刷写</h2>
+    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）在“诊断”页选。安全算法随开屏密码解锁内置好；指纹诊断仪编号自动获取，取不到才用内置值兜底，不用填。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX。</p>
+    <div class="hint" id="fCtrl"></div>
+  </div>
 
-  // 解释一条完整的 UDS 报文（已重组）；U 为 tools/uds.json。返回若干行文字
-  function udsExplain(p, U) {
-    if (!p || !p.length || !U) return [];
-    const k = H(p[0]), out = [], name = x => U.services[x] || '未知服务';
-    const sub = (tbl, b) => (tbl[H(b & 0x7F)] || '子功能 0x' + H(b & 0x7F)) + (b & 0x80 ? '（抑制正响应）' : '');
-    const did = (a, b) => { const x = H(a) + H(b); return `0x${x}${U.dids[x] ? ' ' + U.dids[x] : ''}`; };
-    const ascii = u8 => { const s = String.fromCharCode(...u8); return /^[\x20-\x7E]+$/.test(s.replace(/\x00+$/, '')) ? s.replace(/\x00+$/, '') : ''; };
-    if (p[0] === 0x7F) {
-      const n = U.nrc[H(p[2])] || ['未定义的否定码', ''];
-      out.push(`❌ 否定响应：服务 0x${H(p[1])} ${name(H(p[1]))} 被拒绝`);
-      out.push(`否定码 NRC 0x${H(p[2])}：${n[0]}`);
-      if (n[1]) out.push('说明：' + n[1]);
-      return out;
-    }
-    let req = true, sid = k;
-    if (!U.services[k] && U.services[H(p[0] - 0x40)]) { req = false; sid = H(p[0] - 0x40); }
-    if (!U.services[sid]) return [`首字节 0x${k} 不是常见的 UDS 服务`];
-    out.push((req ? '➡️ 请求：' : '✅ 正响应：') + `0x${sid} ${name(sid)}`);
-    const b1 = p[1];
-    switch (sid) {
-      case '10':
-        if (p.length > 1) out.push('会话：' + sub(U.sessions, b1));
-        if (!req && p.length >= 6) out.push(`P2 = ${(p[2] << 8 | p[3])} ms，P2* = ${(p[4] << 8 | p[5]) * 10} ms`);
-        break;
-      case '11': if (p.length > 1) out.push('复位类型：' + sub(U.resets, b1)); break;
-      case '14': if (req && p.length >= 4) out.push('故障码组：' + (p[1] === 0xFF && p[2] === 0xFF && p[3] === 0xFF ? 'FFFFFF 全部故障码' : hexs(p, 1, 4))); break;
-      case '19': {
-        if (p.length > 1) out.push('子功能：' + sub(U.dtcSub, b1));
-        if (req && [0x02, 0x0A, 0x0F, 0x13, 0x15, 0x17].includes(b1 & 0x7F) && p.length > 2) out.push(`状态掩码 0x${H(p[p.length - 1])}：${statusText(p[p.length - 1])}`);
-        if (req && [0x04, 0x06].includes(b1) && p.length >= 6) out.push(`故障码 ${dtcText(p[2], p[3], p[4])}，记录号 0x${H(p[5])}`);
-        if (!req && [0x02, 0x0A, 0x0F, 0x13, 0x15].includes(b1)) {
-          out.push(`ECU 支持的状态位 0x${H(p[2])}，共 ${Math.max(0, (p.length - 3) >> 2)} 个故障码：`);
-          for (let i = 3; i + 4 <= p.length; i += 4) out.push(`  ${dtcText(p[i], p[i + 1], p[i + 2])}（${hexs(p, i, i + 3)}）状态 0x${H(p[i + 3])}：${statusText(p[i + 3])}`);
-        }
-        if (!req && b1 === 0x01 && p.length >= 6) out.push(`符合条件的故障码数量：${p[4] << 8 | p[5]}`);
-        if (!req && [0x04, 0x06].includes(b1) && p.length >= 6) out.push(`故障码 ${dtcText(p[2], p[3], p[4])} 状态 0x${H(p[5])}：${statusText(p[5])}；后续为快照 / 扩展数据：${hexs(p, 6)}`);
-        break;
-      }
-      case '22':
-        if (req) for (let i = 1; i + 2 <= p.length; i += 2) out.push('读取 ' + did(p[i], p[i + 1]));
-        else if (p.length >= 3) {
-          out.push('数据标识符 ' + did(p[1], p[2]));
-          const data = p.subarray(3), a = ascii(data);
-          out.push('数据：' + hexs(data) + (a ? `（ASCII：${a}）` : ''));
-          if (H(p[1]) + H(p[2]) === 'F186' && data.length) out.push('当前会话：' + (U.sessions[H(data[0])] || '0x' + H(data[0])));
-        }
-        break;
-      case '2E':
-        if (p.length >= 3) out.push('数据标识符 ' + did(p[1], p[2]));
-        if (req && p.length > 3) { const a = ascii(p.subarray(3)); out.push('写入：' + hexs(p, 3) + (a ? `（ASCII：${a}）` : '')); }
-        break;
-      case '27':
-        if (p.length > 1) out.push(`安全等级 ${(b1 + 1) >> 1}：` + (b1 & 1 ? (req ? '请求种子（Seed）' : '返回种子 ' + hexs(p, 2) + (p.subarray(2).every(x => !x) ? '（全 0 表示已解锁）' : '')) : (req ? '发送密钥（Key）' + hexs(p, 2) : '密钥正确，已解锁')));
-        break;
-      case '28':
-        if (p.length > 1) out.push('控制方式：' + sub(U.commCtrl, b1));
-        if (req && p.length > 2) out.push('报文类型：' + (U.commType[H(p[2] & 3)] || '0x' + H(p[2])));
-        break;
-      case '2F':
-        if (p.length >= 3) out.push('数据标识符 ' + did(p[1], p[2]));
-        if (p.length > 3) out.push('控制参数：' + (U.ioCtrl[H(p[3])] || '0x' + H(p[3])) + (p.length > 4 ? '，数据 ' + hexs(p, 4) : ''));
-        break;
-      case '31':
-        if (p.length > 1) out.push(sub(U.routineSub, b1));
-        if (p.length >= 4) out.push(`例程 ID 0x${H(p[2])}${H(p[3])}` + (p.length > 4 ? `，${req ? '参数' : '结果'} ${hexs(p, 4)}` : ''));
-        break;
-      case '3E': out.push(b1 & 0x80 ? '保持会话（不需要应答）' : '保持会话'); break;
-      case '85': if (p.length > 1) out.push(sub(U.dtcSetting, b1)); break;
-      case '34': case '35': if (!req && p.length > 2) out.push('ECU 每块最多接收 ' + parseInt(hexs(p, 2).replace(/ /g, '') || '0', 16) + ' 字节'); break;
-      case '36': if (p.length > 1) out.push(`块序号 ${b1}` + (req ? `，数据 ${p.length - 2} 字节` : '')); break;
-    }
-    return out;
-  }
+  <div class="card">
+    <h2>刷写文件</h2>
+    <div class="frow">
+      <label class="fbtn" for="fDrv">选择文件</label>
+      <input type="file" id="fDrv" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
+      <span><b>Driver</b> <span class="hint" id="fDrvName">（引导驱动，可不选）</span></span>
+    </div>
+    <div class="frow">
+      <label class="fbtn" for="fApp">选择文件</label>
+      <input type="file" id="fApp" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
+      <span><b>App</b> <span class="hint" id="fAppName">（应用程序）</span></span>
+    </div>
+    <div class="hint" id="fInfo" style="margin-top:8px">只收 S19 / HEX（.s19 / .s28 / .s37 / .srec / .mot / .hex / .ihex）。别的格式会明确拒绝，不会当成刷写数据。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
+  </div>
 
-  return { Frames, read, readBLF, readASC, rawValue, decodeSignal, isotp, findDTCs, suspects, dtcText, statusText, tpFrame, udsExplain, isDiagId, EXT };
-})();
-if (typeof module !== 'undefined') module.exports = CanLog;
+  <div class="card">
+    <div class="hint" style="margin-bottom:10px">开始前确认：<b>蓄电池电压正常 / 接好充电宝</b>，手机设成不自动锁屏，中途别拔线、别切后台、别关通道。刷写时整车其他控制器会被静默，失败会尝试自动恢复；若提示停在 Boot，重新刷一次。</div>
+    <div class="row">
+      <button class="b p" id="fStart">开始刷写</button>
+      <button class="b r" id="fStop" hidden>停止</button>
+    </div>
+    <div class="bar" style="margin-top:12px"><i id="fBar"></i></div>
+    <div class="hint" id="fProg" style="margin-top:5px"></div>
+    <div id="fSteps" style="margin-top:10px"></div>
+    <div id="fLog" style="margin-top:8px"></div>
+  </div>
 
-</script>
-<script>
-// 多信号曲线（类似 CANalyzer Graphics）：每个信号一条泳道、各自 Y 轴，从上往下均分高度，共用时间轴。
-// 滚轮 / 双指缩放时间轴，拖动平移，双击复位；鼠标悬停显示各信号当前值。
-const Plot = (() => {
-  const COLORS = ['#2a6db5', '#d93025', '#0f9d58', '#e37400', '#8e24aa', '#00838f', '#c2185b', '#5d4037', '#3949ab', '#7cb342'];
-  const AXIS_W = 70, XAXIS_H = 26, PAD = 6;
+  <details class="card">
+    <summary>刷写流程（高级：步骤、指令、等待时间）</summary>
+    <p class="hint" style="margin-top:8px">默认是标准 UDS 刷写顺序，换控制器 / 供应商改这里。顶层 <code>alfid</code> 地址/长度格式、<code>timeout</code> 每条等待毫秒、<code>recovery</code> 中途失败恢复整车的功能寻址指令；<code>steps</code> 每步有 <code>op</code>（req 物理请求 / func 功能寻址不等应答 / security 安全访问 / fingerprint 写指纹 / tp_on / tp_off 保持在线 / flash 刷文件 / delay 等待）、<code>name</code>、<code>data</code>、<code>wait</code>。flash 步的 <code>file</code> 是 driver/app，<code>erase</code> 先擦除、<code>activate</code> 后激活。</p>
+    <textarea id="fFlow" style="width:100%;min-height:240px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="b" id="fFlowReset">恢复默认流程</button>
+      <button class="b" id="fFlowExport">导出</button>
+      <button class="b" id="fFlowImport">导入</button>
+      <input type="file" id="fFlowFile" accept=".json,application/json" hidden>
+      <span class="hint" id="fFlowSt"></span>
+    </div>
+  </details>
+</section>
 
-  function niceStep(span, n) {
-    const raw = span / Math.max(1, n), p = 10 ** Math.floor(Math.log10(raw)), r = raw / p;
-    return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * p;
-  }
-  const fmt = (v, step) => {
-    const d = Math.max(0, Math.min(6, -Math.floor(Math.log10(step || 1) + 1e-9)));
-    return Number(v.toFixed(d)).toString();
-  };
-  // 二分：第一个 t[i] >= x
-  function lower(t, x) {
-    let lo = 0, hi = t.length;
-    while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; }
-    return lo;
-  }
+<section id="cfg">
+  <div class="card">
+    <h2>总线设置</h2>
+    <div class="row">
+      <div class="fld">仲裁段波特率
+        <select id="nomRate">
+          <option value="125000">125k</option><option value="250000">250k</option>
+          <option value="500000" selected>500k</option><option value="1000000">1M</option>
+        </select></div>
+      <div class="fld">采样点 %<input type="number" id="nomSp" value="80" min="50" max="95" step="0.5" style="width:84px"></div>
+      <label class="tgl" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="fdOn" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
+    </div>
+    <div class="row" id="fdRow">
+      <div class="fld">数据段波特率
+        <select id="dataRate">
+          <option value="1000000">1M</option><option value="2000000" selected>2M</option>
+          <option value="4000000">4M</option><option value="5000000">5M</option><option value="8000000">8M</option>
+        </select></div>
+      <div class="fld">采样点 %<input type="number" id="dataSp" value="70" min="50" max="95" step="0.5" style="width:84px"></div>
+      <div class="fld">FD 类型
+        <select id="niso"><option value="0">ISO（一般选这个）</option><option value="1">非 ISO（Bosch）</option></select></div>
+    </div>
+    <div class="row">
+      <div class="fld">模式
+        <div class="seg" id="mode"><button data-v="1" class="on">只听</button><button data-v="0">正常收发</button></div></div>
+      <div class="hint" style="align-self:flex-end;max-width:520px">只听：不发任何报文、不回 ACK，不影响总线，录报文用这个。诊断、发报文要用“正常收发”。通道开着时改设置会自动重开通道。</div>
+    </div>
+    <div class="row hint" id="timingInfo"></div>
+  </div>
 
-  class Plot {
-    constructor(box, onChange) {
-      this.box = box; this.onChange = onChange;
-      this.cv = document.createElement('canvas');
-      this.cv.style.cssText = 'display:block;width:100%;touch-action:none;cursor:grab';
-      box.appendChild(this.cv);
-      this.ctx = this.cv.getContext('2d');
-      this.sigs = []; this.x0 = 0; this.x1 = 1; this.full = [0, 1]; this.hover = null; this.height = 0;
-      this.bind();
-      new ResizeObserver(() => this.draw()).observe(box);
-    }
+  <div class="card">
+    <h2>固件</h2>
+    <div class="row" id="fwNow">当前：未连接</div>
+    <div class="hint">配套的是 vdlink 固件（在 CANable 2.0 原版 slcan 固件上改的，开源）。原版固件也能用，但时间戳不准、采样点不能调、只听模式不生效。</div>
+    <details style="margin-top:8px">
+      <summary>刷入 vdlink 固件</summary>
+      <ol>
+        <li>拔下 CANable，把 <b>BOOT</b> 两个针脚用跳线帽短接。</li>
+        <li>重新插上，这时它是“烧录模式”，不是 CAN 设备。</li>
+        <li>点下面的按钮，在弹窗里选 <b>STM32 BOOTLOADER</b>（或 DFU in FS Mode）。</li>
+        <li>等进度走完显示“完成”，拔下来、<b>取下跳线帽</b>，再插上就是新固件。</li>
+      </ol>
+      <div class="hint">电脑（Windows）上浏览器一般看不到烧录模式的设备（缺驱动），用安卓手机刷最省事；也可以用 ST 官方的 STM32CubeProgrammer 刷 <a href="fw/vdlink-1.0.bin">vdlink-1.0.bin</a>（地址 0x08000000）。</div>
+      <div class="row" style="margin-top:10px"><button class="b p" id="btnFlash">刷入 vdlink 1.0</button></div>
+      <div class="bar"><i id="fwBar"></i></div>
+      <div class="hint" id="fwMsg"></div>
+    </details>
+  </div>
 
-    // sigs: [{key, name, unit, t, v, vt, step}]
-    set(sigs, dur, keepView) {
-      sigs.forEach((s, i) => { s.color = s.color || COLORS[i % COLORS.length]; });
-      this.sigs = sigs;
-      this.full = [0, Math.max(dur, 1e-3)];
-      if (!keepView) [this.x0, this.x1] = this.full;
-      this.draw();
-    }
-    reset() { [this.x0, this.x1] = this.full; this.draw(); }
-    zoom(f, cx) {                                      // f<1 放大；cx 为缩放中心（时间）
-      const c = cx ?? (this.x0 + this.x1) / 2, [a, b] = this.full;
-      let w = Math.min(b - a, Math.max(1e-5, (this.x1 - this.x0) * f));
-      let x0 = c - (c - this.x0) * w / (this.x1 - this.x0);
-      x0 = Math.max(a, Math.min(b - w, x0));
-      this.x0 = x0; this.x1 = x0 + w; this.draw();
-    }
-    pan(dt) {
-      const [a, b] = this.full, w = this.x1 - this.x0;
-      this.x0 = Math.max(a, Math.min(b - w, this.x0 + dt)); this.x1 = this.x0 + w; this.draw();
-    }
-    setHeight(h) { this.height = h; this.draw(); }
+  <div class="card">
+    <h2>其他</h2>
+    <div class="row">
+      <button class="b" id="btnDemo">演示模式</button>
+      <span class="hint">不接硬件，用编出来的报文看看界面。</span>
+    </div>
+    <div class="row">
+      <button class="b" id="btnExport">导出设置和常用指令</button>
+      <button class="b" id="btnImport">导入</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+    <div class="row">
+      <button class="b" id="btnLog">导出日志</button>
+      <span class="hint">遇到问题时，把运行日志导出来，用来分析原因。</span>
+    </div>
+    <div class="hint">设置和常用指令存在浏览器里，清理浏览器数据会丢，建议导出一份备份。</div>
+    <div class="hint" id="offlineInfo" style="margin-top:6px"></div>
+  </div>
+</section>
 
-    geom() {
-      const W = this.box.clientWidth, n = Math.max(1, this.sigs.length);
-      const H = this.height || Math.max(320, Math.min(window.innerHeight * 0.72, 90 + n * 150));
-      return { W, H, n, laneH: (H - XAXIS_H) / n, pw: W - AXIS_W - PAD };
-    }
-    tx(t, g) { return AXIS_W + (t - this.x0) / (this.x1 - this.x0) * g.pw; }
-    xt(x, g) { return this.x0 + (x - AXIS_W) / g.pw * (this.x1 - this.x0); }
-
-    draw() {
-      const g = this.geom(), dpr = window.devicePixelRatio || 1, c = this.ctx;
-      if (!g.W) return;
-      this.cv.style.height = g.H + 'px';
-      if (this.cv.width !== Math.round(g.W * dpr) || this.cv.height !== Math.round(g.H * dpr)) {
-        this.cv.width = Math.round(g.W * dpr); this.cv.height = Math.round(g.H * dpr);
-      }
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.clearRect(0, 0, g.W, g.H);
-      c.font = '11px -apple-system, "Microsoft YaHei", sans-serif';
-      if (!this.sigs.length) {
-        c.fillStyle = '#6b7280'; c.textAlign = 'center';
-        c.fillText('在上方搜索并添加信号', g.W / 2, g.H / 2);
-        return;
-      }
-      // 时间网格
-      const xs = niceStep(this.x1 - this.x0, Math.max(2, g.pw / 90));
-      c.strokeStyle = '#eef1f5'; c.lineWidth = 1; c.beginPath();
-      for (let t = Math.ceil(this.x0 / xs) * xs; t <= this.x1; t += xs) {
-        const x = Math.round(this.tx(t, g)) + .5; c.moveTo(x, 0); c.lineTo(x, g.H - XAXIS_H);
-      }
-      c.stroke();
-      this.sigs.forEach((s, i) => this.lane(s, i, g));
-      // 时间轴
-      c.fillStyle = '#6b7280'; c.textAlign = 'center'; c.textBaseline = 'top';
-      for (let t = Math.ceil(this.x0 / xs) * xs; t <= this.x1; t += xs) c.fillText(fmt(t, xs) + 's', this.tx(t, g), g.H - XAXIS_H + 6);
-      c.strokeStyle = '#9aa5b4'; c.beginPath(); c.moveTo(AXIS_W, g.H - XAXIS_H + .5); c.lineTo(g.W - PAD, g.H - XAXIS_H + .5); c.stroke();
-      // 光标
-      if (this.hover !== null) {
-        const x = Math.round(this.tx(this.hover, g)) + .5;
-        c.strokeStyle = 'rgba(0,0,0,.45)'; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(x, 0); c.lineTo(x, g.H - XAXIS_H); c.stroke(); c.setLineDash([]);
-        const lbl = this.hover.toFixed(4) + 's', w = c.measureText(lbl).width + 8;
-        c.fillStyle = '#1f2937'; c.fillRect(Math.min(x - w / 2, g.W - w), g.H - XAXIS_H + 2, w, 18);
-        c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(lbl, Math.min(x, g.W - w / 2), g.H - XAXIS_H + 11);
-      }
-    }
-
-    lane(s, i, g) {
-      const c = this.ctx, top = i * g.laneH, h = g.laneH, y0 = top + 16, y1 = top + h - 6;
-      if (i) { c.strokeStyle = '#d5dde8'; c.beginPath(); c.moveTo(0, top + .5); c.lineTo(g.W, top + .5); c.stroke(); }
-      const a = Math.max(0, lower(s.t, this.x0) - 1), b = Math.min(s.t.length, lower(s.t, this.x1) + 1);
-      let mn = Infinity, mx = -Infinity;
-      for (let k = a; k < b; k++) { const v = s.v[k]; if (v < mn) mn = v; if (v > mx) mx = v; }
-      if (!isFinite(mn)) { mn = 0; mx = 1; }
-      if (mn === mx) { mn -= 1; mx += 1; } else { const p = (mx - mn) * .08; mn -= p; mx += p; }
-      const ty = v => y1 - (v - mn) / (mx - mn) * (y1 - y0);
-      // Y 轴刻度
-      const ys = niceStep(mx - mn, Math.max(1, Math.floor((y1 - y0) / 28)));
-      c.textAlign = 'right'; c.textBaseline = 'middle';
-      for (let v = Math.ceil(mn / ys) * ys; v <= mx; v += ys) {
-        const y = Math.round(ty(v)) + .5;
-        c.strokeStyle = '#f1f3f6'; c.beginPath(); c.moveTo(AXIS_W, y); c.lineTo(g.W - PAD, y); c.stroke();
-        c.fillStyle = '#6b7280'; c.fillText(fmt(v, ys), AXIS_W - 6, y);
-      }
-      c.strokeStyle = s.color; c.lineWidth = 2; c.beginPath(); c.moveTo(AXIS_W - .5, y0 - 4); c.lineTo(AXIS_W - .5, y1 + 2); c.stroke();
-      // 曲线：点多时每个像素列取最小/最大值
-      c.save(); c.beginPath(); c.rect(AXIS_W, top + 1, g.pw, h - 1); c.clip();
-      c.strokeStyle = s.color; c.lineWidth = 1.4; c.beginPath();
-      if (b - a > g.pw * 3) {
-        let col = -1, cmn = 0, cmx = 0, first = true;
-        const flush = () => {
-          if (col < 0) return;
-          const x = AXIS_W + col + .5;
-          if (first) { c.moveTo(x, ty(cmn)); first = false; } else c.lineTo(x, ty(cmn));
-          c.lineTo(x, ty(cmx));
-        };
-        for (let k = a; k < b; k++) {
-          const cc = Math.floor(this.tx(s.t[k], g) - AXIS_W), v = s.v[k];
-          if (cc !== col) { flush(); col = cc; cmn = cmx = v; } else { if (v < cmn) cmn = v; if (v > cmx) cmx = v; }
-        }
-        flush();
-      } else {
-        for (let k = a; k < b; k++) {
-          const x = this.tx(s.t[k], g), y = ty(s.v[k]);
-          if (k === a) c.moveTo(x, y);
-          else if (s.step) { c.lineTo(x, ty(s.v[k - 1])); c.lineTo(x, y); } else c.lineTo(x, y);
-        }
-        if (s.step && b > a) c.lineTo(this.tx(Math.min(this.x1, s.t[b - 1] + (this.x1 - this.x0)), g), ty(s.v[b - 1]));
-      }
-      c.stroke();
-      if (b - a <= g.pw / 6) {                          // 点稀疏时画出采样点
-        c.fillStyle = s.color;
-        for (let k = a; k < b; k++) c.fillRect(this.tx(s.t[k], g) - 1.5, ty(s.v[k]) - 1.5, 3, 3);
-      }
-      c.restore();
-      // 名称 + 光标值
-      let label = s.name + (s.unit ? ` [${s.unit}]` : '');
-      if (this.hover !== null && s.t.length) {
-        const k = Math.max(0, lower(s.t, this.hover + 1e-9) - 1), v = s.v[k], r = s.raw ? s.raw[k] : v;
-        label += ' = ' + (Number.isInteger(v) ? v : Number(v.toPrecision(7))) + (s.vt && s.vt[r] !== undefined ? ` (${s.vt[r]})` : '');
-      }
-      c.font = 'bold 12px -apple-system, "Microsoft YaHei", sans-serif';
-      c.textAlign = 'left'; c.textBaseline = 'top';
-      const w = c.measureText(label).width;
-      c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(AXIS_W + 4, top + 2, w + 8, 16);
-      c.fillStyle = s.color; c.fillText(label, AXIS_W + 8, top + 3);
-      c.font = '11px -apple-system, "Microsoft YaHei", sans-serif';
-    }
-
-    bind() {
-      const cv = this.cv, pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-      cv.addEventListener('wheel', e => {
-        if (!this.sigs.length) return;
-        e.preventDefault();
-        const g = this.geom(), [x] = pt(e);
-        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) this.pan(e.deltaX / g.pw * (this.x1 - this.x0));
-        else this.zoom(Math.exp(e.deltaY * 0.0015), this.xt(Math.max(AXIS_W, x), g));
-      }, { passive: false });
-      const ptrs = new Map();
-      let drag = null, pinch = null;
-      cv.addEventListener('pointerdown', e => {
-        cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, pt(e));
-        if (ptrs.size === 1) { drag = { x: pt(e)[0], x0: this.x0 }; cv.style.cursor = 'grabbing'; }
-        if (ptrs.size === 2) {
-          const [p, q] = [...ptrs.values()];
-          pinch = { d: Math.abs(p[0] - q[0]) || 1, c: this.xt((p[0] + q[0]) / 2, this.geom()), x0: this.x0, x1: this.x1 };
-          drag = null;
-        }
-      });
-      cv.addEventListener('pointermove', e => {
-        const g = this.geom(), [x] = pt(e);
-        if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, pt(e));
-        if (pinch && ptrs.size === 2) {
-          const [p, q] = [...ptrs.values()], f = pinch.d / (Math.abs(p[0] - q[0]) || 1);
-          this.x0 = pinch.x0; this.x1 = pinch.x1; this.zoom(f, pinch.c); return;
-        }
-        if (drag) {
-          const w = this.x1 - this.x0;
-          this.x0 = drag.x0; this.x1 = drag.x0 + w;
-          this.pan(-(x - drag.x) / g.pw * w);
-        }
-        this.hover = x >= AXIS_W && this.sigs.length ? this.xt(x, g) : null;
-        this.draw();
-      });
-      const up = e => {
-        ptrs.delete(e.pointerId);
-        if (ptrs.size < 2) pinch = null;
-        if (!ptrs.size) { drag = null; cv.style.cursor = 'grab'; }
-      };
-      cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-      cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { this.hover = null; this.draw(); } });
-      cv.addEventListener('dblclick', () => this.reset());
-    }
-  }
-  return Plot;
-})();
-
-</script>
-<script>
-const UDS = {"_说明":"UDS（ISO 14229）通用诊断知识表：网页报文提取（tools/web/canlog.js）和 tools/analyze.py 共用。键为十六进制字符串。","services":{"10":"诊断会话控制","11":"ECU 复位","14":"清除故障码","19":"读故障码信息","22":"按标识符读数据（读 DID）","23":"按地址读内存","24":"读数据比例信息","27":"安全访问","28":"通信控制","29":"认证","2A":"周期读数据","2C":"动态定义数据标识符","2E":"按标识符写数据（写 DID）","2F":"输入输出控制","31":"例程控制","34":"请求下载","35":"请求上传","36":"传输数据","37":"请求退出传输","38":"请求文件传输","3D":"按地址写内存","3E":"诊断仪在线（保持会话）","83":"访问时间参数","84":"安全数据传输","85":"控制故障码设置","86":"事件响应","87":"链路控制"},"nrc":{"10":["一般拒绝","ECU 因未列出的原因拒绝请求"],"11":["服务不支持","ECU 不支持该服务，确认诊断仪选的 ECU / 车型是否正确"],"12":["子功能不支持","服务支持但该子功能不支持"],"13":["报文长度或格式错误","请求的字节数或格式不对"],"14":["响应太长","应答超出传输层能发送的长度"],"21":["忙，请重发","ECU 暂时忙，稍后重试即可"],"22":["条件不满足","当前车辆状态不允许执行，如车速不为 0、未踩制动、电压不在范围、发动机运行等，按要求调整状态后再试"],"24":["请求顺序错误","步骤顺序不对，如没先请求种子就发送密钥、没请求下载就传输数据"],"25":["子网节点无应答","网关转发后目标节点没有应答"],"26":["故障阻止执行","存在故障导致无法执行该请求"],"31":["请求超出范围","DID / 例程 ID / 参数不支持或数值越界，确认数据标识符是否适用于该 ECU"],"33":["安全访问被拒绝","需要先通过安全访问（27 服务）解锁"],"34":["需要认证","需要先完成认证（29 服务）"],"35":["密钥无效","安全访问发送的 Key 不正确，检查诊断仪 / 安全算法版本"],"36":["尝试次数超限","密钥错误次数过多，ECU 已锁定"],"37":["延时未到","锁定延时未结束，等待一段时间（常见 10 秒）或重新上电后再试"],"38":["安全数据传输错误（保留范围）",""],"70":["不接受上传 / 下载","ECU 拒绝刷写数据传输，检查前置条件与会话"],"71":["数据传输暂停","数据传输被中止"],"72":["一般编程失败","擦除或写入存储器失败"],"73":["块序号错误","36 服务的块序号不连续"],"78":["请求已收到，响应等待中","ECU 正在处理，随后会再发正响应或负响应，属于正常过程，不是故障"],"7E":["当前会话不支持该子功能","先用 10 服务切换到正确的会话（扩展 / 编程）"],"7F":["当前会话不支持该服务","先用 10 服务切换到扩展会话（10 03）或编程会话（10 02）"],"81":["转速过高","降低发动机转速"],"82":["转速过低","提高发动机转速 / 启动发动机"],"83":["发动机运行中","需要熄火后执行"],"84":["发动机未运行","需要启动发动机后执行"],"85":["发动机运行时间过短","发动机需运行更长时间"],"86":["温度过高","等温度降低后再试"],"87":["温度过低","等温度升高后再试"],"88":["车速过高","停车后再试"],"89":["车速过低","需要一定车速"],"8A":["油门 / 踏板过高","松开加速踏板"],"8B":["油门 / 踏板过低","踩下加速踏板"],"8C":["变速器不在空挡","挂 N 挡"],"8D":["变速器不在挡位","挂入挡位"],"8F":["制动开关未闭合","踩下制动踏板后再试"],"90":["挡位不在 P 挡","挂 P 挡"],"91":["变矩器离合器锁止",""],"92":["电压过高","检查蓄电池 / 充电电压"],"93":["电压过低","检查蓄电池电压，必要时接稳压电源"]},"sessions":{"01":"默认会话","02":"编程会话","03":"扩展会话","04":"安全系统会话"},"resets":{"01":"硬复位","02":"钥匙下电上电复位","03":"软复位","04":"开启快速下电","05":"关闭快速下电"},"dtcSub":{"01":"按状态掩码统计故障码数量","02":"按状态掩码读故障码","03":"读快照记录标识","04":"按故障码读快照数据","05":"按记录号读快照","06":"按故障码读扩展数据","07":"按严重度统计数量","08":"按严重度读故障码","09":"读故障码严重度信息","0A":"读支持的全部故障码","0B":"读第一个测试失败的故障码","0C":"读第一个确认的故障码","0D":"读最近测试失败的故障码","0E":"读最近确认的故障码","0F":"读镜像存储器故障码","13":"读排放相关故障码","14":"读故障检测计数器","15":"读永久故障码","17":"读用户存储器故障码","42":"读 WWH-OBD 故障码"},"routineSub":{"01":"启动例程","02":"停止例程","03":"请求例程结果"},"commCtrl":{"00":"允许收发","01":"允许接收、禁止发送","02":"禁止接收、允许发送","03":"禁止收发"},"commType":{"01":"常规应用报文","02":"网络管理报文","03":"常规应用 + 网络管理报文"},"dtcSetting":{"01":"开启故障码记录","02":"关闭故障码记录"},"ioCtrl":{"00":"交还 ECU 控制","01":"恢复默认","02":"冻结当前状态","03":"短期调整"},"dids":{"F180":"Boot 软件版本","F181":"应用软件标识","F182":"应用数据标识","F183":"Boot 软件指纹","F184":"应用软件指纹","F185":"应用数据指纹","F186":"当前诊断会话","F187":"零件号","F188":"ECU 软件号","F189":"ECU 软件版本","F18A":"供应商代码","F18B":"ECU 生产日期","F18C":"ECU 序列号","F18E":"总成零件号","F190":"VIN 车架号","F191":"ECU 硬件号","F192":"供应商硬件号","F193":"供应商硬件版本","F194":"供应商软件号","F195":"供应商软件版本","F197":"系统名称","F198":"诊断仪 / 维修站代码","F199":"编程日期","F19D":"装车日期","F19E":"ODX 文件标识","F1A0":"配置 / 特征码"}};
-</script>
-<script>
-// AI 助手：使用者自己填写 API Key，浏览器直接调用所选大模型（OpenAI 兼容接口 / Claude 原生接口）。
-// Key 与设置只存在本机浏览器 localStorage；提问时附带由网页按固定规则整理的当前数据（文字，可先查看修改）。
-const AI = (() => {
-  const PRESETS = [
-    { id: 'claude', name: 'Claude（Anthropic）', proto: 'anthropic', url: 'https://api.anthropic.com/v1/messages', model: 'claude-opus-5-5' },
-    { id: 'deepseek', name: 'DeepSeek', proto: 'openai', url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-    { id: 'qwen', name: '通义千问（阿里云百炼）', proto: 'openai', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-    { id: 'kimi', name: 'Kimi（月之暗面）', proto: 'openai', url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-32k' },
-    { id: 'glm', name: '智谱 GLM', proto: 'openai', url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-    { id: 'doubao', name: '豆包（火山方舟）', proto: 'openai', url: 'https://ark.cn-beijing.volces.com/api/v3', model: '' },
-    { id: 'openai', name: 'OpenAI', proto: 'openai', url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-    { id: 'custom', name: '其他（OpenAI 兼容接口）', proto: 'openai', url: '', model: '' },
-  ];
-  // 支持服务端安全回退（refusal 时自动换模型）的 Claude 模型
-  const FALLBACK_MODELS = ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'];
-  const SYSTEM = '你是资深的汽车电子电气与售后诊断工程师，熟悉 CAN / CAN FD 总线、UDS 诊断（ISO 14229）、ISO-TP 和各类整车控制器。' +
-    '用户会给你网页从报文中整理出的数据（故障码、诊断过程、信号变化、报文内容，部分页面只有原始报文的十六进制数据）以及诊断问卷里的解释，并提出问题。' +
-    '请结合这些数据和汽车诊断通用知识回答：先给结论，再按可能性从高到低列出可能原因，然后给出具体可操作的排查步骤和注意事项。' +
-    '数据不足以下结论时直接说明还需要什么数据或测量，不要编造数据里没有的数值。用中文回答，条理清晰、简洁。';
-  const KEY = 'ai_cfg';
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; } };
-  const store = c => { try { if (c) localStorage.setItem(KEY, JSON.stringify(c)); else localStorage.removeItem(KEY); } catch (e) {} };
-
-  // ---------- 数据整理（纯规则，不调用模型） ----------
-  const num = v => Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6)));
-  const lower = (t, x) => { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; } return lo; };
-
-  function sigText(s, x0, x1) {
-    const a = lower(s.t, x0), b = lower(s.t, x1 + 1e-9);
-    const head = `- ${s.name}${s.unit ? ` [${s.unit}]` : ''}（报文 ${s.msg}）`;
-    if (b <= a) return head + '：该时间段内无数据';
-    const txt = k => (s.vt && s.raw && s.vt[s.raw[k]] !== undefined ? `(${s.vt[s.raw[k]]})` : '');
-    if (s.step) {                                     // 状态类：列出每次变化
-      const ch = [a];
-      for (let k = a + 1; k < b; k++) if (s.v[k] !== s.v[k - 1]) ch.push(k);
-      const list = ch.slice(0, 25).map(k => `${s.t[k].toFixed(3)}s=${num(s.v[k])}${txt(k)}`).join('；');
-      return `${head}：${ch.length > 1 ? `共变化 ${ch.length - 1} 次：` : '始终为 '}${list}${ch.length > 25 ? '；…' : ''}`;
-    }
-    let mn = a, mx = a, sum = 0;
-    for (let k = a; k < b; k++) { if (s.v[k] < s.v[mn]) mn = k; if (s.v[k] > s.v[mx]) mx = k; sum += s.v[k]; }
-    const n = b - a, step = Math.max(1, Math.floor(n / 10)), pts = [];
-    for (let k = a; k < b; k += step) pts.push(`${s.t[k].toFixed(2)}s:${num(s.v[k])}`);
-    return `${head}：${n} 个采样点，最小 ${num(s.v[mn])}（${s.t[mn].toFixed(3)}s），最大 ${num(s.v[mx])}（${s.t[mx].toFixed(3)}s），` +
-      `平均 ${num(sum / n)}，首 ${num(s.v[a])}，末 ${num(s.v[b - 1])}\n  采样：${pts.slice(0, 12).join('，')}`;
-  }
-
-  // st: {view, model, dtcItem, dtcQuery, log, logName, dbc, dtcs, events, sigs, win, trace}
-  function summarize(st) {
-    const L = [];
-    if (st.model) L.push(`车型 / 问卷：${st.model}`);
-    if (st.view === 'dtc') {
-      const it = st.dtcItem;
-      if (it) {
-        L.push(`查询的故障码：${it.d}（高中字节 ${it.hm}，低字节 ${it.l}）`);
-        L.push(`问卷故障描述：${it.desc || '（未填写）'}`, `问卷可能原因：${it.cause || '（未填写）'}`, `问卷维修建议：${it.fix || '（未填写）'}`);
-      } else if (st.dtcQuery) L.push(`查询的故障码：${st.dtcQuery}（问卷中没有找到）`);
-      return L.join('\n');
-    }
-    if (!st.log) { L.push('（尚未打开报文）'); return L.join('\n'); }
-    L.push(`报文文件：${st.logName}，时长 ${st.log.dur.toFixed(2)} s，${st.log.n} 帧` + (st.dbc === undefined ? '' : `；DBC：${st.dbc ? st.dbc.name : '未加载'}`));
-    if (st.dtcs === undefined) {
-      // 页面不做故障码识别（如纯报文查看版）
-    } else if (st.dtcs.length) {
-      L.push('', '【识别到的故障码】');
-      for (const d of st.dtcs) {
-        L.push(`- ${d.code}（${d.b}）来自 ${d.ecu}，${d.src}，状态 0x${d.st.toString(16).toUpperCase().padStart(2, '0')}${d.statusText ? ' ' + d.statusText : ''}，` +
-          `首次 ${d.t.toFixed(3)}s${d.n > 1 ? `，共 ${d.n} 次` : ''}`);
-        if (d.it) L.push(`  问卷：${d.it.desc || ''}；可能原因：${d.it.cause || ''}；维修建议：${d.it.fix || ''}`);
-      }
-    } else L.push('', '【识别到的故障码】无（报文中没有读码应答，也没有广播的故障码信号）');
-    if (st.events && st.events.length) {
-      L.push('', '【诊断过程】');
-      for (const e of st.events.slice(0, 30)) L.push(`- ${e.t.toFixed(3)}s ${e.ecu} ${e.text}`);
-    }
-    if (st.sigs && st.sigs.length) {
-      const [x0, x1] = st.win;
-      L.push('', `【信号曲线】时间窗口 ${x0.toFixed(3)}–${x1.toFixed(3)} s`);
-      for (const s of st.sigs) L.push(sigText(s, x0, x1));
-    }
-    if (st.trace) L.push('', '【选中的报文】', st.trace);
-    if (st.frames) L.push('', st.frames);
-    let out = L.join('\n');
-    if (out.length > 15000) out = out.slice(0, 15000) + '\n…（数据过长，已截断）';
-    return out;
-  }
-
-  // ---------- 调用模型（流式） ----------
-  async function* sse(resp) {
-    const rd = resp.body.getReader(), dec = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { value, done } = await rd.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (line.startsWith('data:')) yield line.slice(5).trim();
-      }
-    }
-  }
-
-  async function chat(cfg, messages, onText) {
-    let resp;
-    try {
-      if (cfg.proto === 'anthropic') {
-        const body = { model: cfg.model, max_tokens: 16000, stream: true, system: SYSTEM, messages };
-        const headers = { 'content-type': 'application/json', 'x-api-key': cfg.key, 'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true' };
-        if (FALLBACK_MODELS.includes(cfg.model)) { body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
-        resp = await fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify(body) });
-      } else {
-        const url = /\/chat\/completions\/?$/.test(cfg.url) ? cfg.url : cfg.url.replace(/\/+$/, '') + '/chat/completions';
-        resp = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + cfg.key },
-          body: JSON.stringify({ model: cfg.model, stream: true, messages: [{ role: 'system', content: SYSTEM }, ...messages] }) });
-      }
-    } catch (e) {
-      throw new Error('无法连接到接口（网络不通，或该厂商不允许网页直接调用 / 跨域被拦截）。请检查接口地址；如仍不行，需要通过中转服务调用。');
-    }
-    if (!resp.ok) {
-      let msg = '';
-      try { const j = await resp.json(); msg = (j.error && (j.error.message || j.error.type)) || j.message || JSON.stringify(j); } catch (e) {}
-      const hint = resp.status === 401 || resp.status === 403 ? '（API Key 不正确或没有权限）' : resp.status === 404 ? '（接口地址或模型名不正确）' :
-        resp.status === 429 ? '（请求太频繁或额度不足）' : resp.status === 402 ? '（账户余额不足）' : '';
-      throw new Error(`接口返回错误 ${resp.status}${hint}${msg ? '：' + msg : ''}`);
-    }
-    let all = '', stop = '';
-    for await (const d of sse(resp)) {
-      if (d === '[DONE]') break;
-      let j; try { j = JSON.parse(d); } catch (e) { continue; }
-      let t = '';
-      if (cfg.proto === 'anthropic') {
-        if (j.type === 'content_block_delta' && j.delta && j.delta.type === 'text_delta') t = j.delta.text;
-        else if (j.type === 'message_delta' && j.delta) stop = j.delta.stop_reason || stop;
-        else if (j.type === 'error') throw new Error('模型返回错误：' + ((j.error && j.error.message) || '未知错误'));
-      } else {
-        const c = j.choices && j.choices[0];
-        t = (c && c.delta && c.delta.content) || '';
-        if (j.error) throw new Error('模型返回错误：' + (j.error.message || JSON.stringify(j.error)));
-      }
-      if (t) { all += t; onText(all); }
-    }
-    if (stop === 'refusal') { all += (all ? '\n\n' : '') + '（模型拒绝回答该问题）'; onText(all); }
-    if (stop === 'max_tokens') { all += '\n\n（回答过长被截断）'; onText(all); }
-    return all;
-  }
-
-  // 极简 Markdown：标题 / 粗体 / 列表 / 代码
-  function md(s) {
-    return esc(s).replace(/```([\s\S]*?)```/g, (_, c) => `<pre>${c.replace(/^\w*\n/, '')}</pre>`)
-      .replace(/^#{1,6}\s*(.+)$/gm, '<b class="h">$1</b>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-      .replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
-  }
-
-  const CSS = `
-  .ai .bar2 { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-  .ai .bar2 .sp { flex: 1; }
-  .ai [data-a="close"] { display: none; }
-  /* 全屏模式：点输入框 / 聊天内容后铺满屏幕，“✕ 收起”回到原页面 */
-  .ai.full { position: fixed; inset: 0; z-index: 1000; background: var(--card, #fff); padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; overflow: hidden; }
-  .ai.full [data-a="close"] { display: inline-block; }
-  .ai.full .msgs { flex: 1; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
-  .ai.full .in textarea { min-height: 72px; max-height: 32vh; }
-  .ai.full .note[data-f="tip"] { display: none; }
-  .ai.full details.ctx textarea { height: 26vh; }
-  .ai.full .cfg { max-height: 50vh; overflow-y: auto; }
-  /* 手机：输入框字号不小于 16px，否则 iOS 点进输入框会自动放大整个页面，之后页面能左右拖动 */
-  @media (max-width: 899px) { .ai textarea, .ai input, .ai select { font-size: 16px !important; } }
-  /* 电脑上：居中大窗口，背后变暗；手机上仍铺满屏幕 */
-  @media (min-width: 900px) {
-    .ai.full { inset: 4vh auto; left: 50%; transform: translateX(-50%); width: min(960px, 92vw); border-radius: 16px;
-      padding: 16px 20px; box-shadow: 0 0 0 100vmax rgba(15,23,42,.45), 0 12px 40px rgba(0,0,0,.25); }
-    .ai.full .m { max-width: 80%; }
-  }
-  .ai-modal { position: fixed; inset: 0; z-index: 1003; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; }
-  .ai-modal .box { background: #fff; border-radius: 16px; padding: 18px 18px 14px; max-width: 340px; width: 100%; font-size: 15px; line-height: 1.6; }
-  .ai-modal .box b { font-size: 17px; }
-  .ai-modal .box p { color: var(--muted, #6b7280); font-size: 13.5px; margin: 8px 0 14px; }
-  .ai-modal .row { display: flex; gap: 10px; justify-content: flex-end; }
-  .ai-modal button { min-width: 84px; height: 38px; font-size: 15px; border-radius: 10px; cursor: pointer; }
-  .ai-modal button.b { border: 1.5px solid var(--line, #d5dde8); background: #fff; color: var(--blue-d, #22507f); }
-  .ai-modal button.p { border: 0; background: var(--blue, #2a6db5); color: #fff; }
-  .ai-modal textarea.mc { width: 100%; height: 40vh; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; border: 1.5px solid var(--line, #d5dde8); border-radius: 10px; padding: 8px; margin-bottom: 12px; }
-  @media (max-width: 899px) { .ai-modal textarea.mc { font-size: 16px; } }
-  .ai .toast { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); background: rgba(31,41,55,.92); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 14px; z-index: 1001; }
-  .ai button.b { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 14px; cursor: pointer; color: var(--blue-d); }
-  .ai button.p { border: 0; background: var(--blue); color: #fff; border-radius: 10px; padding: 0 16px; font-size: 15px; cursor: pointer; }
-  .ai button:disabled { opacity: .5; cursor: default; }
-  .ai .cfg { background: #f8fafc; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; font-size: 14px; }
-  .ai .cfg label { display: block; margin: 6px 0 2px; color: var(--muted); font-size: 13px; }
-  .ai .cfg input, .ai .cfg select { width: 100%; font-size: 14px; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; }
-  .ai .cfg .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  .ai .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; line-height: 1.6; }
-  .ai details.ctx { margin-bottom: 10px; font-size: 14px; }
-  .ai details.ctx summary { cursor: pointer; color: var(--blue); }
-  .ai details.ctx textarea { width: 100%; height: 220px; margin-top: 6px; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px; }
-  .ai .msgs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-  .ai .m { border-radius: 12px; padding: 8px 12px; font-size: 15px; line-height: 1.7; max-width: 92%; word-break: break-word; }
-  .ai .m.u { align-self: flex-end; background: var(--blue); color: #fff; white-space: pre-wrap; }
-  .ai .m.a { align-self: flex-start; background: #f3f6fa; }
-  .ai .m.a b.h { display: block; margin-top: 4px; color: var(--blue-d); }
-  .ai .m.a pre { background: #fff; padding: 6px 8px; border-radius: 8px; overflow: auto; font-size: 12.5px; }
-  .ai .m.e { align-self: stretch; background: #fdecea; color: #a52714; font-size: 14px; }
-  .ai .in { display: flex; gap: 8px; }
-  .ai .in textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 160px; font-size: 15px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 12px; outline: none; resize: vertical; font-family: inherit; }
-  .ai .in textarea:focus { border-color: var(--blue); }`;
-
-  // box：容器；getState()：返回 summarize 所需的当前状态
-  function mount(box, getState) {
-    const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
-    box.classList.add('ai');
-    box.innerHTML = `
-      <div class="bar2"><button class="b" data-a="close">✕ 收起</button><span class="sp"></span><button class="b" data-a="new">新对话</button><button class="b" data-a="cfg">⚙️ 设置</button></div>
-      <div class="cfg" hidden>
-        <label>模型厂商</label><select data-f="preset">${PRESETS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
-        <label>接口地址</label><input data-f="url" spellcheck="false" autocomplete="off">
-        <label>模型名</label><input data-f="model" spellcheck="false" autocomplete="off" placeholder="以厂商文档为准，如 deepseek-chat">
-        <label>API Key</label><input data-f="key" type="password" spellcheck="false" autocomplete="off" placeholder="在厂商开放平台创建">
-        <div class="row"><button class="p" data-a="save">保存</button><button class="b" data-a="del">清除 Key</button></div>
-        <div class="note">Key 只保存在这台设备的浏览器里，不会上传到本网站；提问时由浏览器直接发给所选厂商，按你的账户计费。
-          提问会把下方“附带的数据”（故障码、信号变化等文字）一并发给厂商。个别厂商不允许网页直接调用，会提示无法连接，需要通过中转服务调用。</div>
-      </div>
-      <details class="ctx"><summary>附带的数据（发送前可查看、修改）</summary>
-        <div style="margin:6px 0"><label style="font-size:13px"><input type="checkbox" data-f="use" checked> 提问时附带当前数据</label>
-        <button class="b" data-a="ref" style="margin-left:8px">按当前页面重新整理</button></div>
-        <textarea data-f="ctx" spellcheck="false"></textarea>
-      </details>
-      <div class="msgs"></div>
-      <div class="in"><textarea data-f="q" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
-        <button class="p" data-a="send">发送</button></div>
-      <div class="note" data-f="tip"></div>`;
-    const $f = n => box.querySelector(`[data-f="${n}"]`), $a = n => box.querySelector(`[data-a="${n}"]`);
-    const cfgBox = box.querySelector('.cfg'), msgs = box.querySelector('.msgs');
-    let cfg = load(), hist = [], sentCtx = '', ctxDirty = false, busy = false;
-
-    const fillCfg = () => {
-      const p = PRESETS.find(x => x.id === (cfg && cfg.preset)) || PRESETS[0];
-      $f('preset').value = p.id;
-      $f('url').value = cfg ? cfg.url : p.url; $f('model').value = cfg ? cfg.model : p.model; $f('key').value = cfg ? cfg.key : '';
-    };
-    const tip = () => { $f('tip').textContent = cfg && cfg.key ? `当前：${(PRESETS.find(x => x.id === cfg.preset) || {}).name || ''} · ${cfg.model}` : '还没有设置 API Key：点“⚙️ 设置”填写；没有 Key 也可以用报文列表下的“📋 复制给 AI 助手”，粘贴到其他 AI 里使用。'; };
-    $f('preset').onchange = () => { const p = PRESETS.find(x => x.id === $f('preset').value); $f('url').value = p.url; $f('model').value = p.model; };
-    $a('cfg').onclick = () => { cfgBox.hidden = !cfgBox.hidden; if (!cfgBox.hidden) fillCfg(); };
-    $a('save').onclick = () => {
-      const p = PRESETS.find(x => x.id === $f('preset').value);
-      const c = { preset: p.id, proto: p.proto, url: $f('url').value.trim(), model: $f('model').value.trim(), key: $f('key').value.trim() };
-      if (!c.url || !c.model || !c.key) { alert('请填写接口地址、模型名和 API Key'); return; }
-      cfg = c; store(cfg); cfgBox.hidden = true; tip();
-    };
-    $a('del').onclick = () => { if (cfg) { cfg.key = ''; store(cfg.url ? cfg : null); } $f('key').value = ''; tip(); };
-    $a('new').onclick = () => { hist = []; sentCtx = ''; msgs.innerHTML = ''; };
-    // 全屏 / 收起
-    let backY = 0;                                   // 收起后回到放大前的页面位置
-    const full = on => {
-      if (on === box.classList.contains('full')) return;
-      if (on) backY = window.scrollY;
-      box.classList.toggle('full', on);
-      document.documentElement.style.overflow = on ? 'hidden' : '';
-      if (!on) { $f('q').blur(); window.scrollTo(0, backY); }
-    };
-    $a('close').onclick = () => full(false);
-    $f('q').addEventListener('focus', () => full(true));
-    msgs.addEventListener('click', () => full(true));
-    const toast = t => { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; box.appendChild(d); setTimeout(() => d.remove(), 1800); };
-    const refresh = () => { $f('ctx').value = summarize(getState()); ctxDirty = false; };
-    $a('ref').onclick = refresh;
-    $f('ctx').oninput = () => { ctxDirty = true; };
-    box.querySelector('details.ctx').ontoggle = e => { if (e.target.open && !ctxDirty) refresh(); };
-
-    const bubble = (cls, html) => { const d = document.createElement('div'); d.className = 'm ' + cls; d.innerHTML = html; msgs.appendChild(d); return d; };
-    const compose = q => {
-      if (!ctxDirty) refresh();
-      const ctx = $f('use').checked ? $f('ctx').value.trim() : '';
-      const extra = ctx && ctx !== sentCtx ? (sentCtx ? '【数据已更新】\n' : '【当前数据】\n') + ctx + '\n\n【问题】\n' : '';
-      return { text: extra + q, ctx };
-    };
-    async function send() {
-      const q = $f('q').value.trim();
-      if (!q || busy) return;
-      if (!cfg || !cfg.key) { cfgBox.hidden = false; fillCfg(); alert('请先在“设置”里填写 API Key；没有 Key 可以用报文列表下的“📋 复制给 AI 助手”，粘贴到其他 AI 使用。'); return; }
-      const { text, ctx } = compose(q);
-      busy = true; $a('send').disabled = true;
-      bubble('u', esc(q));
-      box.querySelector('details.ctx').open = false;   // 发出后收起附带数据，聊天区更大
-      const a = bubble('a', '<span style="color:var(--muted)">思考中…</span>');
-      hist.push({ role: 'user', content: text });
-      $f('q').value = '';
-      try {
-        const ans = await chat(cfg, hist, t => { a.innerHTML = md(t); });
-        if (!ans) a.innerHTML = '<span style="color:var(--muted)">（没有返回内容）</span>';
-        hist.push({ role: 'assistant', content: ans || '（无回答）' });
-        sentCtx = ctx || sentCtx;
-      } catch (e) {
-        hist.pop();
-        a.remove();
-        bubble('e', esc(e.message || e));
-        $f('q').value = q;
-      }
-      busy = false; $a('send').disabled = false;
-      a.scrollIntoView && a.scrollIntoView({ block: 'nearest' });
-    }
-    $a('send').onclick = send;
-    $f('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
-    tip();
-    // 页面上的“复制给 AI 助手”按钮：按当前页面整理数据（含选取的报文）→ 复制到剪贴板，并附带到 AI 助手、打开聊天。
-    // 本次打开网页后第一次复制时询问是否按提问模板（身份设定 + 数据 + 问题）复制；之后只复制内容，不再询问。
-    // 复制必须在用户点按的那一下同步完成（浏览器只在用户操作时允许写剪贴板），所以在按钮 / 弹窗按钮的点击里直接复制。
-    let asked = false;
-    const modal = (html, onClick) => {
-      const m = document.createElement('div');
-      m.className = 'ai-modal';
-      m.innerHTML = `<div class="box">${html}</div>`;
-      m.onclick = e => { const v = e.target.dataset.v; if (v === undefined) return; m.remove(); onClick(v); };
-      document.body.appendChild(m);
-      return m;
-    };
-    // 老方法：临时文本框选中后 execCommand('copy')，UC / 部分国产浏览器只认这种
-    function legacyCopy(text) {
-      const t = document.createElement('textarea');
-      t.value = text;
-      t.setAttribute('readonly', '');
-      t.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0';
-      document.body.appendChild(t);
-      t.select();
-      t.setSelectionRange(0, text.length);
-      let ok = false;
-      try { ok = document.execCommand('copy'); } catch (e) {}
-      t.remove();
-      return ok;
-    }
-    // 两种方法都失败：显示内容并全选，让用户长按复制
-    function manualCopy(text, then) {
-      const m = modal(`<b>浏览器不允许自动复制</b><p>请长按下方文字 → 全选 → 复制，然后点“好了”。</p>
-        <textarea readonly class="mc">${esc(text)}</textarea><div class="row"><button class="p" data-v="1">好了</button></div>`, then);
-      const t = m.querySelector('textarea');
-      setTimeout(() => { t.focus(); t.select(); t.setSelectionRange(0, text.length); }, 50);
-    }
-    // 依次尝试：新方法（Clipboard API，苹果 / Chrome 正常）→ 老方法 → 显示全选框手动复制
-    function copyText(text, then) {           // then(ok)：ok=true 已复制；false 走了手动复制
-      const fallback = () => legacyCopy(text) ? then(true) : manualCopy(text, () => then(false));
-      let p = null;
-      try { if (navigator.clipboard && window.isSecureContext) p = navigator.clipboard.writeText(text); } catch (e) {}
-      if (p) p.then(() => then(true), fallback); else fallback();
-    }
-    function takeData() {
-      refresh();
-      $f('use').checked = true;
-      const data = $f('ctx').value;
-      const done = ok => { full(true); $f('q').focus(); toast(ok ? '已复制，并已附带到 AI 助手' : '已附带到 AI 助手'); };
-      if (asked) return copyText(data, done);
-      asked = true;
-      modal(`<b>是否按提问模板复制？</b>
-        <p>选“是”：开头附带诊断工程师的身份和回答要求、末尾留出问题，适合直接粘贴到其他 AI 提问。<br>选“否”：只复制选取的报文 / 数据。<br>本次打开网页只问这一次，之后都只复制内容。</p>
-        <div class="row"><button class="b" data-v="0">否</button><button class="p" data-v="1">是</button></div>`,
-        v => copyText(v === '1' ? SYSTEM + '\n\n【当前数据】\n' + data + '\n\n【问题】\n（请在这里写下你的问题）' : data, done));
-    }
-    return { takeData, full };
-  }
-
-  return { mount, summarize, chat, PRESETS };
-})();
-if (typeof module !== 'undefined') module.exports = AI;
-
-</script>
-<script>
-const $ = id => document.getElementById(id);
-const store = {
-  get(s, k) { try { return window[s].getItem(k); } catch (e) { return null; } },
-  set(s, k, v) { try { window[s].setItem(k, v); } catch (e) {} },
-};
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let DB = null, model = null, items = [], view = null, CURIT = null, CURQ = '', LASTDTC = [], LASTEV = [], TRTXT = '';
-
-// ================= 车型 / 功能 =================
-function start(data) {
-  DB = data;
-  $('lock').hidden = true;
-  $('app').hidden = false;
-  DB.models.forEach((m, i) => {
-    const b = document.createElement('button');
-    b.textContent = m.model;
-    b.onclick = () => pick(i);
-    $('models').appendChild(b);
-  });
-  document.querySelectorAll('.fns button').forEach(b => b.onclick = () => show(b.dataset.v));
-  const last = DB.models.findIndex(m => m.model === store.get('localStorage', 'dtc_model'));
-  if (last >= 0) pick(last, true);
-  LogDB.get().then(v => { if (v && v.data) { RESTORE = v; restoreLog(); } }).catch(() => {});
-}
-let RESTORE = null;   // 上次的报文：车型选好后再加载（解析要用车型对应的 DBC）
-function restoreLog() {
-  if (!RESTORE || !model || LOG || LOADING) return;
-  const v = RESTORE; RESTORE = null;
-  openFile({ name: v.name, arrayBuffer: () => v.data.arrayBuffer() }, true);
-}
-
-function pick(i, silent) {
-  model = DB.models[i];
-  items = model.items.map(it => ({ ...it, b: it.hm + it.l, bd: dispToHex(it.d) }));
-  [...$('models').children].forEach((b, j) => b.classList.toggle('on', i === j));
-  $('s2').classList.remove('disabled');
-  $('cur').textContent = model.model;
-  store.set('localStorage', 'dtc_model', model.model);
-  if ($('q').value) search(); else $('s3').hidden = true;
-  if (LOG) analyze(); else restoreLog();
-  show(view || store.get('localStorage', 'dtc_view') || 'dtc', silent);
-}
-
-function show(v, silent) {
-  view = v;
-  store.set('localStorage', 'dtc_view', v);
-  document.querySelectorAll('.fns button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  $('vDtc').hidden = v !== 'dtc';
-  $('vLog').hidden = v !== 'log';
-  $('aiCard').hidden = false;
-  document.body.classList.toggle('wide', v === 'log');
-  $('dbcCur').textContent = model.dbc ? 'DBC：' + model.dbc : '该车型暂无 DBC';
-  if (v === 'dtc' && !silent) $('q').focus();
-  if (v === 'log' && plot) plot.draw();
-  if (v === 'log' && !silent && !LOG && !LOADING) flash($('drop'));   // 还没打开报文：带到“打开报文”并闪一下提示
-}
-
-// ================= 故障码查询 =================
-const norm = s => s.toUpperCase().replace(/0X/g, '').replace(/[^0-9A-Z]/g, '');
-// 显示码 → 3 字节 hex：首字母 P/C/B/U = 00/01/10/11 放在最高两位
-function dispToHex(d) {
-  const n = 'PCBU'.indexOf(d[0]);
-  return n < 0 ? '' : ((n << 2) | parseInt(d[1], 16)).toString(16).toUpperCase() + d.slice(2);
-}
-
-function search() {
-  const q = norm($('q').value);
-  if (!model || !q) { $('s3').hidden = true; return; }
-  $('s3').hidden = false;
-  CURQ = q; CURIT = null;
-  const exact = items.filter(it => it.d === q || it.b === q || it.bd === q);
-  if (exact.length === 1) return detail(exact[0], false);
-  let hits = exact;
-  if (!hits.length && q.length >= 2)
-    hits = items.filter(it => it.d.startsWith(q) || it.b.startsWith(q) || it.bd.startsWith(q));
-  list(hits, q);
-}
-
-function list(hits, q) {
-  $('s3t').textContent = hits.length ? `找到 ${hits.length} 条备选` : '查询结果';
-  if (!hits.length) {
-    $('out').innerHTML = `<div class="msg">「${esc(model.model)}」中没有找到 <span class="code">${esc(q)}</span><br>请核对车型和故障码</div>`;
-    return;
-  }
-  $('out').innerHTML = '<ul class="list">' + hits.map((it, i) =>
-    `<li data-i="${i}"><span class="code">${esc(it.d)}</span><span class="bytes">${esc(it.hm)} ${esc(it.l)}</span>` +
-    `<div class="d">${esc(it.desc || '（未填写）')}</div></li>`).join('') + '</ul>';
-  $('out').querySelectorAll('li').forEach(li => li.onclick = () => detail(hits[li.dataset.i], true));
-}
-
-function sec(title, it, k) {
-  return `<div class="sec"><h3>${title}</h3><div class="t">${esc(it[k] || '（表中未填写）')}</div></div>`;
-}
-
-function detail(it, fromList) {
-  CURIT = it;
-  $('s3t').textContent = '故障信息';
-  $('out').innerHTML = (fromList ? '<button class="back" id="back">‹ 返回备选列表</button>' : '') +
-    `<div class="codes"><div><small>显示码</small><b>${esc(it.d)}</b></div>` +
-    `<div><small>高中字节</small><b>${esc(it.hm)}</b></div><div><small>低字节</small><b>${esc(it.l)}</b></div></div>` +
-    sec('故障描述', it, 'desc') + sec('可能原因', it, 'cause') + sec('维修建议', it, 'fix');
-  if (fromList) $('back').onclick = search;
-  $('s3').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-let timer;
-$('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
-$('form').addEventListener('submit', e => { e.preventDefault(); $('q').blur(); search(); });
-
-// ================= 数据分析 =================
-let LOG = null, LOGNAME = '', DBC = null, SIGS = [], plot = null, plotH = 0, dbcPick = '';
-const keyOf = m => m.ext ? (m.id | CanLog.EXT) >>> 0 : m.id;
-const hexId = id => '0x' + (id & 0x1FFFFFFF).toString(16).toUpperCase() + (id & CanLog.EXT ? 'x' : '');
-const fmtT = t => t.toFixed(3) + ' s';
-const BRAKE = /IBCU|ESP|ESC|EPB|ABS|IPB|EBB|EHB|RBM|BCU/i;
-
-function flash(el) {
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
-}
-// 报文存在本机浏览器（IndexedDB，只留最近一个），切换功能、刷新或下次打开都不用重新选择；点“清除”才删除
-const LogDB = {
-  open() {
-    return new Promise((ok, no) => {
-      const r = indexedDB.open('sef', 1);
-      r.onupgradeneeded = () => r.result.createObjectStore('files');
-      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
-    });
-  },
-  async run(mode, fn) {
-    const db = await this.open();
-    return new Promise((ok, no) => {
-      const tx = db.transaction('files', mode), req = fn(tx.objectStore('files'));
-      tx.oncomplete = () => { db.close(); ok(req.result); }; tx.onerror = tx.onabort = () => { db.close(); no(tx.error); };
-    });
-  },
-  get() { return this.run('readonly', st => st.get('log')); },
-  put(v) { return this.run('readwrite', st => st.put(v, 'log')); },
-  del() { return this.run('readwrite', st => st.delete('log')); },
-};
-let LOADING = false, LOADID = 0, LOGSAVED = false;   // LOADID：读取中又选了新文件时，旧的那次读完直接丢弃
-
-async function openFile(f, restored) {
-  if (!f) return;
-  const id = ++LOADID;
-  LOADING = true;
-  $('bar').hidden = false;
-  const bar = $('bar').firstElementChild;
-  bar.style.width = '2%';
-  $('info').innerHTML = `<p class="hint">${restored ? '正在加载上次打开的报文' : '正在读取'} ${esc(f.name)} …</p>`;
-  try {
-    const buf = await f.arrayBuffer();
-    const log = await CanLog.read(f.name, buf, p => id === LOADID && (bar.style.width = Math.round(p * 100) + '%'));
-    if (id !== LOADID) return;
-    LOG = log;
-    LOGNAME = f.name;
-    bar.style.width = '100%';
-    LOGSAVED = !!restored;
-    if (!restored) try { await LogDB.put({ name: f.name, data: new Blob([buf]) }); LOGSAVED = true; } catch (e) {}
-    dbcPick = '';
-    SIGS = [];
-    analyze();
-  } catch (e) {
-    if (id !== LOADID) return;
-    LOG = null;
-    $('info').innerHTML = `<div class="warn">读取失败：${esc(e.message || e)}</div>`;
-    $('res').hidden = true;
-    if (restored) LogDB.del().catch(() => {});
-  }
-  LOADING = false;
-  setTimeout(() => $('bar').hidden = true, 600);
-}
-function clearLog() {
-  LOG = null; LOGNAME = ''; SIGS = [];
-  $('info').innerHTML = ''; $('res').hidden = true;
-  LogDB.del().catch(() => {});
-}
-
-// 各 DBC 能认出多少帧，用于提示车型是否选错
-function coverage(name) {
-  const db = DB.dbcs[name], ids = new Set(db.msgs.map(keyOf));
-  let fr = 0, n = 0;
-  for (const [id, idx] of LOG.byId) if (ids.has(id)) { fr += idx.length; n++; }
-  return { name, fr, n };
-}
-
-function analyze() {
-  if (!LOG) return;
-  const name = dbcPick || model.dbc;
-  DBC = DB.dbcs[name] || null;
-  const cov = Object.keys(DB.dbcs).map(coverage).sort((a, b) => b.fr - a.fr);
-  const mine = cov.find(c => c.name === name);
-  const known = DBC ? new Set(DBC.msgs.map(keyOf)) : new Set();
-  const unknown = [...LOG.byId.keys()].filter(id => !known.has(id)).sort((a, b) => a - b);
-  let fd = 0;
-  for (let i = 0; i < LOG.n; i++) if (LOG.fl[i] & 2) fd++;
-  const chs = [...new Set(LOG.ch)].sort().map(c => 'CAN' + c).join(' ');
-  let h = '<div class="kv">' +
-    `<div><small>文件</small>${esc(LOGNAME)}</div><div><small>时长</small>${LOG.dur.toFixed(2)} s</div>` +
-    `<div><small>帧数</small>${LOG.n}${fd ? `（FD ${fd}）` : ''}</div><div><small>通道</small>${chs || '-'}</div>` +
-    `<div><small>报文 ID</small>${LOG.byId.size} 个</div>` +
-    `<div><small>DBC 能解析</small>${mine ? `${mine.n} 个 ID / ${LOG.n ? Math.round(mine.fr / LOG.n * 100) : 0}% 帧` : '无'}</div></div>`;
-  h += `<p class="hint">使用 DBC：<select id="dbcSel">${Object.keys(DB.dbcs).map(n =>
-    `<option ${n === name ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>（默认按车型自动选择）</p>`;
-  if (cov[0] && mine && cov[0].name !== name && cov[0].fr > mine.fr * 1.3)
-    h += `<div class="warn">报文和 <b>${esc(cov[0].name)}</b> 更匹配（能解析 ${Math.round(cov[0].fr / LOG.n * 100)}% 帧），请确认车型是否选对。</div>`;
-  if (unknown.length)
-    h += `<details class="hint"><summary>DBC 中没有定义的 ID（${unknown.length} 个）</summary>${unknown.map(id =>
-      `${hexId(id)}（${LOG.byId.get(id).length} 帧）`).join('、')}</details>`;
-  h += `<div class="ld">${LOGSAVED ? '报文已记在本机，下次打开不用重新选择' : '⚠️ 报文太大或浏览器不允许，未能记在本机，下次需要重新选择'} <button id="rmLog">清除</button></div>`;
-  $('info').innerHTML = h;
-  $('rmLog').onclick = clearLog;
-  $('dbcSel').onchange = e => { dbcPick = e.target.value; analyze(); };
-  $('res').hidden = false;
-  renderDTC();
-  renderSuspects();
-  buildIndex();
-  // 换 DBC 后保留同名信号
-  const keep = SIGS.map(s => s.key);
-  SIGS = [];
-  for (const k of keep) { const x = INDEX.find(e => e.key === k); if (x) addSig(x, true); }
-  renderSigs();
-  initTrace();
-}
-
-function renderDTC() {
-  const { dtcs, events } = CanLog.findDTCs(LOG, DBC);
-  LASTEV = events;
-  LASTDTC = dtcs.map(d => ({ ...d, it: items.find(x => x.d === d.code), statusText: d.src.startsWith('诊断') ? CanLog.statusText(d.st) : '' }));
-  let h = '';
-  if (!dtcs.length) {
-    h = '<div class="msg">报文中没有发现故障码<br><small>（没有诊断仪读码应答，也没有广播的故障码信号）</small></div>';
-  } else {
-    h += `<p class="hint" style="margin:-6px 0 10px">共 ${dtcs.length} 个，按问卷「${esc(model.model)}」解析：</p>`;
-    for (const d of dtcs) {
-      const it = items.find(x => x.d === d.code);
-      const diag = d.src.startsWith('诊断');
-      h += `<div class="dtc"><div class="h"><span class="code" style="font-size:17px">${esc(d.code)}</span>` +
-        `<span class="bytes">${esc(d.b)}</span><span class="meta">${esc(d.ecu)} · ${esc(d.src)}</span></div>` +
-        `<div class="meta">状态：${diag ? esc(CanLog.statusText(d.st)) + `（0x${d.st.toString(16).toUpperCase().padStart(2, '0')}）` : '0x' + d.st.toString(16).toUpperCase().padStart(2, '0')}` +
-        ` · 首次 ${fmtT(d.t)}${d.n > 1 ? ` · 共 ${d.n} 次，最后 ${fmtT(d.tl)}` : ''}</div>`;
-      if (it) {
-        h += `<div class="desc">${esc(it.desc || '（未填写）')}</div>`;
-        if (!BRAKE.test(d.ecu)) h += `<div class="warn">该故障码来自 ${esc(d.ecu)}，问卷只收录制动控制模块，含义仅供参考。</div>`;
-        h += `<details><summary>可能原因与维修建议</summary>${sec('可能原因', it, 'cause')}${sec('维修建议', it, 'fix')}</details>`;
-      } else {
-        h += `<div class="meta" style="margin-top:4px">问卷中未收录该故障码${BRAKE.test(d.ecu) ? '' : `（来自 ${esc(d.ecu)}，问卷只收录制动控制模块）`}</div>`;
-      }
-      h += '</div>';
-    }
-  }
-  if (events.length)
-    h += '<details open><summary class="hint">诊断过程</summary>' + events.map(e =>
-      `<div class="ev">${fmtT(e.t)} · ${esc(e.ecu)} · ${esc(e.text)}</div>`).join('') + '</details>';
-  $('dtcOut').innerHTML = h;
-}
-
-function renderSuspects() {
-  const sus = CanLog.suspects(LOG, DBC);
-  $('susCard').hidden = !sus.length;
-  const byKey = new Map();
-  for (const s of sus) {
-    const k = s.msg + '.' + s.sig;
-    if (!byKey.has(k)) byKey.set(k, { ...s, vals: [] });
-    byKey.get(k).vals.push(s.text);
-  }
-  $('susOut').innerHTML = [...byKey.entries()].map(([k, s]) =>
-    `<span class="chip sus" data-k="${esc(k)}" title="${esc(s.msg)} · 首次 ${fmtT(s.t)}"><span>${esc(s.sig)}</span><b>${esc(s.vals.join(' / '))}</b></span>`).join('');
-  $('susOut').querySelectorAll('.chip').forEach(c => c.onclick = () => {
-    const x = INDEX.find(e => e.key === c.dataset.k); if (x) addSig(x);
-  });
-}
-
-// ---- 信号搜索 ----
-let INDEX = [];
-function buildIndex() {
-  INDEX = [];
-  if (!DBC) return;
-  for (const m of DBC.msgs) {
-    const n = (LOG.byId.get(keyOf(m)) || []).length;
-    for (const s of m.sigs) INDEX.push({ key: m.name + '.' + s.n, m, s, n, text: (s.n + ' ' + m.name + ' ' + (s.c || '')).toLowerCase() });
-  }
-}
-
-let act = 0, hits = [];
-function searchSig() {
-  const q = $('sq').value.trim().toLowerCase();
-  if (!q) { $('sl').hidden = true; return; }
-  const words = q.split(/\s+/);
-  hits = INDEX.filter(e => words.every(w => e.text.includes(w)))
-    .map(e => { const n = e.s.n.toLowerCase(); return [e, (e.n ? 0 : 4) + (n === q ? 0 : n.startsWith(words[0]) ? 1 : n.includes(words[0]) ? 2 : 3)]; })
-    .sort((a, b) => a[1] - b[1]).map(x => x[0])
-    .slice(0, 80);
-  act = 0;
-  $('sl').hidden = false;
-  $('sl').innerHTML = hits.length ? hits.map((e, i) =>
-    `<div data-i="${i}" class="${i ? '' : 'act'}" style="${e.n ? '' : 'opacity:.5'}">${esc(e.s.n)}${e.s.u ? ` <small style="display:inline">[${esc(e.s.u)}]</small>` : ''}` +
-    `<small>${esc(e.m.name)} · ${e.n ? e.n + ' 帧' : '报文中没有这一帧'}${e.s.c ? ' · ' + esc(e.s.c.replace(/\s+/g, ' ')) : ''}</small></div>`).join('')
-    : '<div class="hint">没有匹配的信号</div>';
-  $('sl').querySelectorAll('[data-i]').forEach(d => d.onmousedown = e => { e.preventDefault(); pickHit(+d.dataset.i); });
-}
-function pickHit(i) {
-  if (!hits[i]) return;
-  addSig(hits[i]);
-  $('sq').value = '';
-  $('sl').hidden = true;
-}
-$('sq').addEventListener('input', searchSig);
-$('sq').addEventListener('focus', searchSig);
-$('sq').addEventListener('blur', () => setTimeout(() => $('sl').hidden = true, 150));
-$('sq').addEventListener('keydown', e => {
-  const rows = $('sl').querySelectorAll('[data-i]');
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    act = Math.max(0, Math.min(rows.length - 1, act + (e.key === 'ArrowDown' ? 1 : -1)));
-    rows.forEach((r, i) => r.classList.toggle('act', i === act));
-    rows[act] && rows[act].scrollIntoView({ block: 'nearest' });
-  } else if (e.key === 'Enter') { e.preventDefault(); pickHit(act); }
-  else if (e.key === 'Escape') $('sl').hidden = true;
-});
-
-// ---- 曲线 ----
-function addSig(e, quiet) {
-  if (SIGS.some(s => s.key === e.key)) return;
-  const d = CanLog.decodeSignal(LOG, e.m, e.s);
-  SIGS.push({ key: e.key, name: e.s.n, unit: e.s.u, t: d.t, v: d.v, raw: d.raw, vt: e.s.vt, step: !!e.s.vt || e.s.bl <= 3, msg: e.m.name });
-  if (!quiet) renderSigs();
-}
-function renderSigs() {
-  if (!plot) plot = new Plot($('plot'));
-  plot.set(SIGS, LOG ? LOG.dur : 1, SIGS.length > 1);
-  $('chips').innerHTML = SIGS.map((s, i) =>
-    `<span class="chip" title="${esc(s.msg)}${s.t.length ? '' : ' · 报文中没有数据'}"><i style="background:${s.color}"></i><span>${esc(s.name)}</span>` +
-    `${s.t.length ? '' : '<b>无数据</b>'}<b data-i="${i}" style="cursor:pointer">✕</b></span>`).join('');
-  $('chips').querySelectorAll('b[data-i]').forEach(b => b.onclick = () => { SIGS.splice(+b.dataset.i, 1); renderSigs(); });
-}
-$('zin').onclick = () => plot && plot.zoom(0.5);
-$('zout').onclick = () => plot && plot.zoom(2);
-$('zall').onclick = () => plot && plot.reset();
-$('hinc').onclick = () => { plotH = plot.geom().H * 1.25; plot.setHeight(plotH); };
-$('hdec').onclick = () => { plotH = Math.max(200, plot.geom().H / 1.25); plot.setHeight(plotH); };
-$('clr').onclick = () => { SIGS = []; renderSigs(); };
-
-$('file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
-const drop = $('drop');
-['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
-['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', e => openFile(e.dataTransfer.files[0]));
-
-// ================= 报文提取（Trace） =================
-const ROW = 24;
-let TIDX = new Uint32Array(0), TSEL = -1, TP = new Map(), MSGBY = new Map(), PICK = new Set(), MULTI = false;
-function initTrace() {
-  PICK.clear(); $('selN').textContent = 0;
-  TRTXT = '';
-  TP = new Map();
-  for (const m of CanLog.isotp(LOG)) for (const i of m.fi) TP.set(i, m);
-  MSGBY = new Map(DBC ? DBC.msgs.map(m => [keyOf(m), m]) : []);
-  TSEL = -1;
-  $('tdet').innerHTML = '';
-  filterTrace();
-}
-// 筛选：十六进制 ID（可带 0x，扩展帧可带 x 后缀）、范围 700-7FF、报文名（包含即可）
-function filterTrace() {
-  const toks = $('tq').value.trim().split(/[\s,，;；]+/).filter(Boolean);
-  let ids = null;
-  if (toks.length) {
-    ids = new Set();
-    for (const id of LOG.byId.keys()) {
-      const raw = id & 0x1FFFFFFF, nm = (MSGBY.get(id) || {}).name || '';
-      for (const t of toks) {
-        const r = t.match(/^(?:0x)?([0-9a-f]+)\s*-\s*(?:0x)?([0-9a-f]+)$/i);
-        const h = t.match(/^(?:0x)?([0-9a-f]+)x?$/i);
-        if ((r && raw >= parseInt(r[1], 16) && raw <= parseInt(r[2], 16)) ||
-            (h && raw === parseInt(h[1], 16)) || (nm && nm.toLowerCase().includes(t.toLowerCase()))) { ids.add(id); break; }
-      }
-    }
-  }
-  if (!ids) TIDX = Uint32Array.from({ length: LOG.n }, (_, i) => i);
-  else {
-    const a = [];
-    for (let i = 0; i < LOG.n; i++) if (ids.has(LOG.id[i])) a.push(i);
-    TIDX = Uint32Array.from(a);
-  }
-  $('tCnt').textContent = `显示 ${TIDX.length} / ${LOG.n} 帧`;
-  $('tsp').style.height = TIDX.length * ROW + 'px';
-  $('tv').scrollTop = 0;
-  drawTrace();
-}
-const hexOf = (u8, max) => {
-  let s = '';
-  for (let i = 0; i < u8.length && (!max || i < max); i++) s += (i ? ' ' : '') + u8[i].toString(16).toUpperCase().padStart(2, '0');
-  return s + (max && u8.length > max ? ' …' : '');
-};
-function drawTrace() {
-  const v = $('tv'), a = Math.max(0, Math.floor(v.scrollTop / ROW) - 5), b = Math.min(TIDX.length, a + Math.ceil(v.clientHeight / ROW) + 10);
-  let h = '';
-  for (let k = a; k < b; k++) {
-    const i = TIDX[k], id = LOG.id[i], m = MSGBY.get(id), d = LOG.bytes(i);
-    h += `<div class="trow${i === TSEL ? ' sel' : ''}${PICK.has(i) ? ' pick' : ''}${CanLog.isDiagId(id) ? ' diag' : ''}" style="top:${k * ROW}px" data-i="${i}">` +
-      `<span>${LOG.t[i].toFixed(6)}</span><span>CAN${LOG.ch[i]}</span><span>${hexId(id)}</span><span>${m ? esc(m.name) : ''}</span>` +
-      `<span>${LOG.fl[i] & 1 ? 'Tx' : 'Rx'}</span><span>${LOG.fl[i] & 4 ? 'R' : d.length}${LOG.fl[i] & 2 ? ' FD' : ''}</span><span>${hexOf(d, 24)}</span>` +
-      (MULTI ? '<i class="ck"></i>' : '') + '</div>';
-  }
-  $('tsp').innerHTML = h;
-}
-function selTrace(i, scroll) {
-  TSEL = i;
-  drawTrace();
-  if (scroll) {
-    const k = TIDX.indexOf(i), v = $('tv');
-    if (k * ROW < v.scrollTop) v.scrollTop = k * ROW;
-    else if ((k + 1) * ROW > v.scrollTop + v.clientHeight) v.scrollTop = (k + 1) * ROW - v.clientHeight;
-  }
-  const id = LOG.id[i], d = LOG.bytes(i), m = MSGBY.get(id);
-  let h = `<div class="kv"><div><small>时间</small>${LOG.t[i].toFixed(6)} s</div><div><small>ID</small>${hexId(id)}${LOG.fl[i] & 2 ? ' · CAN FD' : ''}</div>` +
-    `<div><small>报文</small>${m ? esc(m.name) + ' · 发送方 ' + esc(m.tx) : 'DBC 未定义'}</div><div><small>方向 / 长度</small>${LOG.fl[i] & 1 ? 'Tx' : 'Rx'} · ${d.length} 字节</div></div>` +
-    `<div class="hexg" style="margin-top:8px">${hexOf(d) || '（无数据）'}</div>`;
-  if (CanLog.isDiagId(id)) {
-    const tp = TP.get(i), lines = [];
-    lines.push('传输层：' + CanLog.tpFrame(d));
-    if (tp) {
-      if (tp.fi.length > 1) lines.push(`完整报文由 ${tp.fi.length} 帧拼成：${hexOf(tp.p, 64)}`);
-      lines.push(...CanLog.udsExplain(tp.p, UDS));
-    } else if ((d[0] >> 4) === 3) lines.push('流控帧由接收方发出，告诉发送方如何继续发送后续连续帧。');
-    h += `<div class="uds">${esc(lines.join('\n'))}</div>`;
-  }
-  if (m && d.length) {
-    const mux = m.sigs.find(s => s.mux === 'M'), mv = mux ? CanLog.rawValue(d, mux) : null;
-    const rows = m.sigs.filter(s => typeof s.mux !== 'number' || s.mux === mv).map(s => {
-      const r = CanLog.rawValue(d, s);
-      if (r === null) return '';
-      const v = r * s.f + s.o, txt = s.vt && s.vt[r] !== undefined ? s.vt[r] : '';
-      return `<tr><td>${esc(s.n)}</td><td>${Number.isInteger(v) ? v : Number(v.toPrecision(7))} ${esc(s.u)}</td><td>${esc(txt)}</td><td>0x${r.toString(16).toUpperCase()}</td></tr>`;
-    }).join('');
-    if (rows) h += `<table><tr><th>信号</th><th>物理值</th><th>含义</th><th>原始值</th></tr>${rows}</table>`;
-  }
-  $('tdet').innerHTML = h;
-  TRTXT = $('tdet').innerText.replace(/\n{2,}/g, '\n').slice(0, 3000);
-  if (!scroll && window.innerWidth < 640) $('tdet').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-$('tv').addEventListener('scroll', () => requestAnimationFrame(drawTrace));
-// 挑选报文：Shift 选一段、Ctrl/⌘ 逐条；“多选”模式下点击勾选，按住勾选框（电脑上任意位置）上下拖动连续选择
-const MAXPICK = 300;
-let drag = null, skipClick = false;   // 按下时已由“拖动选择”处理的，松手后浏览器补发的那次 click 要忽略
-function pickUpd() { $('selN').textContent = PICK.size; drawTrace(); }
-const tv = $('tv');
-tv.addEventListener('click', e => {
-  if (skipClick) { skipClick = false; return; }
-  const r = e.target.closest('.trow');
-  if (!r) return;
-  const i = +r.dataset.i;
-  if (MULTI) {                                   // 多选：只勾选，不跳到详情
-    if (PICK.has(i)) PICK.delete(i); else if (PICK.size < MAXPICK) PICK.add(i);
-    return pickUpd();
-  }
-  if (e.shiftKey && TSEL >= 0) {
-    let a = TIDX.indexOf(TSEL), b = TIDX.indexOf(i);
-    if (a > b) [a, b] = [b, a];
-    for (let k = a; k <= b && PICK.size < MAXPICK; k++) PICK.add(TIDX[k]);
-  } else if (e.ctrlKey || e.metaKey) {
-    if (PICK.has(i)) PICK.delete(i); else if (PICK.size < MAXPICK) PICK.add(i);
-  }
-  selTrace(i);
-  pickUpd();
-});
-const rowAt = y => { const r = tv.getBoundingClientRect(); return Math.max(0, Math.min(TIDX.length - 1, Math.floor((tv.scrollTop + y - r.top) / ROW))); };
-function applyDrag() {
-  const k = rowAt(drag.y), [a, b] = k < drag.k0 ? [k, drag.k0] : [drag.k0, k];
-  PICK = new Set(drag.base);
-  for (let j = a; j <= b; j++) { if (drag.add) { if (PICK.size < MAXPICK) PICK.add(TIDX[j]); } else PICK.delete(TIDX[j]); }
-  pickUpd();
-}
-function autoScroll() {
-  if (!drag) return;
-  const r = tv.getBoundingClientRect(), edge = 36;
-  if (drag.y < r.top + edge) tv.scrollTop -= Math.ceil((r.top + edge - drag.y) / 3);
-  else if (drag.y > r.bottom - edge) tv.scrollTop += Math.ceil((drag.y - r.bottom + edge) / 3);
-  applyDrag();
-  requestAnimationFrame(autoScroll);
-}
-tv.addEventListener('pointerdown', e => {
-  skipClick = false;
-  if (!MULTI || !LOG || e.button > 0) return;
-  const r = e.target.closest('.trow');
-  if (!r || (e.pointerType !== 'mouse' && !e.target.closest('.ck'))) return;   // 触屏：在报文区域滑动 = 滚动列表
-  e.preventDefault();
-  const i = +r.dataset.i;
-  drag = { k0: TIDX.indexOf(i), base: new Set(PICK), add: !PICK.has(i), y: e.clientY };
-  tv.setPointerCapture(e.pointerId);
-  skipClick = true;
-  applyDrag();
-  requestAnimationFrame(autoScroll);
-});
-tv.addEventListener('pointermove', e => { if (drag) drag.y = e.clientY; });
-const endDrag = () => { drag = null; };
-tv.addEventListener('pointerup', endDrag);
-tv.addEventListener('pointercancel', endDrag);
-$('selMode').onclick = () => {
-  MULTI = !MULTI;
-  $('selMode').textContent = '多选：' + (MULTI ? '开' : '关');
-  $('selMode').classList.toggle('on', MULTI);
-  $('trace').classList.toggle('multi', MULTI);
-  if (LOG) drawTrace();
-};
-$('selAll').onclick = () => { if (!LOG) return; for (let k = 0; k < TIDX.length && PICK.size < MAXPICK; k++) PICK.add(TIDX[k]); pickUpd(); };
-$('selClr').onclick = () => { PICK.clear(); pickUpd(); };
-// 选取的报文 → 发给 AI 的文字：原始帧 + 诊断报文的完整请求 / 应答解释
-function pickedText() {
-  const sel = [...PICK].sort((x, y) => x - y), L = [`共 ${sel.length} 帧（时间 s / 通道 / ID / 报文名 / 方向 / 长度 / 数据）：`], seen = new Set();
-  for (const i of sel) {
-    const m = MSGBY.get(LOG.id[i]);
-    L.push(`${LOG.t[i].toFixed(6)}  CAN${LOG.ch[i]}  ${hexId(LOG.id[i])}  ${m ? m.name : '-'}  ${LOG.fl[i] & 1 ? 'Tx' : 'Rx'}  ${LOG.bytes(i).length}${LOG.fl[i] & 2 ? 'FD' : ''}  ${hexOf(LOG.bytes(i))}`);
-  }
-  const ex = [];
-  for (const i of sel) {
-    const tp = TP.get(i);
-    if (!tp || seen.has(tp)) continue;
-    seen.add(tp);
-    ex.push(`- ${tp.t.toFixed(3)}s ${hexId(tp.id)}：${hexOf(tp.p, 64)} → ${CanLog.udsExplain(tp.p, UDS).join('；')}`);
-  }
-  if (ex.length) L.push('', '其中诊断报文（已拼成完整请求 / 应答）按通用规则的初步解释：', ...ex.slice(0, 80));
-  return L.join('\n');
-}
-$('tv').addEventListener('keydown', e => {
-  if (TSEL < 0 || !['ArrowDown', 'ArrowUp'].includes(e.key)) return;
-  e.preventDefault();
-  const k = TIDX.indexOf(TSEL) + (e.key === 'ArrowDown' ? 1 : -1);
-  if (k >= 0 && k < TIDX.length) selTrace(TIDX[k], true);
-});
-let ttimer;
-$('tq').addEventListener('input', () => { clearTimeout(ttimer); ttimer = setTimeout(() => LOG && filterTrace(), 300); });
-$('tAll').onclick = () => { $('tq').value = ''; LOG && filterTrace(); };
-$('tDiag').onclick = () => { $('tq').value = '700-7FF'; LOG && filterTrace(); };
-
-// ================= AI 助手 =================
-const AIUI = AI.mount($('ai'), () => ({
-  view, model: model && model.model, dtcItem: CURIT, dtcQuery: CURQ,
-  log: LOG, logName: LOGNAME, dbc: DBC, dtcs: LASTDTC, events: LASTEV,
-  sigs: SIGS, win: plot ? [plot.x0, plot.x1] : [0, LOG ? LOG.dur : 0], trace: PICK.size ? pickedText() : TRTXT,
-}));
-
-// ================= 加载数据 =================
-const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function unlock(enc, pin) {
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
-  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(enc.salt), iterations: enc.iter },
-    base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-  let pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
-  if (enc.v === 2) pt = await new Response(new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-  return JSON.parse(new TextDecoder().decode(pt));
-}
-
-(async () => {
-  const enc = await (await fetch('data.enc.json', { cache: 'no-cache' })).json();
-  const tryPin = async (pin, saved) => {
-    $('pinErr').textContent = '验证中…';
-    $('pin').disabled = true;
-    let data;
-    try { data = await unlock(enc, pin); } catch (e) {
-      $('pinErr').textContent = saved ? '' : '密码错误，请重试';
-      $('pin').disabled = false;
-      $('pin').value = '';
-      $('pin').focus();
-      return;
-    }
-    store.set('sessionStorage', 'dtc_pin', pin);
-    start(data);
-  };
-  const saved = store.get('sessionStorage', 'dtc_pin');
-  if (saved) tryPin(saved, true); else $('pin').focus();
-  $('pin').addEventListener('input', e => {
-    e.target.value = e.target.value.replace(/\D/g, '');
-    if (e.target.value.length === 6) tryPin(e.target.value, false);
-  });
-})();
-$('toAI').onclick = () => AIUI.takeData();   // 选好的报文 → 复制并附带到 AI 助手，打开全屏聊天
-</script>
+</main>
+<div id="marksModal" class="modal" hidden>
+  <div class="card modal-box">
+    <h2>标记清单</h2>
+    <pre id="marksText" class="markstext"></pre>
+    <div class="row">
+      <button class="b p" id="btnMarksDl">下载</button>
+      <button class="b" id="btnMarksShare">分享</button>
+      <button class="b" id="btnMarksClose">关闭</button>
+    </div>
+    <div class="hint" id="marksMsg"></div>
+  </div>
+</div>
+<script src="data.js"></script>
+<script src="slcan.js"></script>
+<script src="recorder.js"></script>
+<script src="transport.js"></script>
+<script src="demo.js"></script>
+<script src="dfu.js"></script>
+<script src="viewer/uds.js"></script>
+<script src="diag.js"></script>
+<script src="flashfile.js"></script>
+<script src="flash.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -2,18 +2,18 @@
 
 ## 一、自我介绍与写这份文档的目的
 
-你好，我是 Claude，Anthropic 开发的 AI 模型。我通过 Claude Code 和用户 gcy2016（制动系统设计工程师）合作，编写了本仓库 VehDiag_sef，包括里面的报文解析程序。
+你好，我是 Claude，Anthropic 开发的 AI 模型。我通过 Claude Code 和用户 gcy2016（制动系统设计工程师）合作，编写了本仓库 CANLink（原名 VehDiag_sef），包括里面的报文解析程序。
 
 用户以后可能会让其他 AI 模型通过后端访问本仓库，帮他分析车辆 CAN 报文、查找故障原因。我写这份文档，是为了让你尽快知道有哪些现成资源、怎么用、需要什么条件，不必从头摸索，也避免误操作泄露加密内容。
 
 ## 二、提供的资源
 
-**仓库：https://github.com/gcy2016/VehDiag_sef**（Self 自用版，公开仓库，敏感内容都已加密）
-网页版：https://gcy2016.github.io/VehDiag_sef/ （需要 6 位网站密码）
+**仓库：https://github.com/gcy2016/CANLink**（原名 VehDiag_sef，公开仓库，敏感内容都已加密）
+网页版：https://gcy2016.github.io/CANLink/ （需要网页密码；报文分析在“查看 → 离线数据”）
 
 你只需要访问这一个仓库。更完整的工作说明、用户偏好和待办见本仓库的 [CLAUDE.md](CLAUDE.md)，请一并阅读。
 
-**报文解析程序 `tools/analyze.py` 能做什么**（和网页版“数据分析”规则一致）：
+**报文解析程序 `tools/analyze.py` 能做什么**（和网页版“离线数据”规则一致）：
 - 读取 Vector `.blf` / `.asc` 报文（含 CAN FD、压缩容器）。
 - 按车型选择 DBC 解码信号（车型 → DBC 见 `tools/dbc_map.json`）；不指定车型时按覆盖率自动选 DBC，但不对照问卷。
 - 识别故障码：诊断仪读码应答（UDS 19 服务，含 ISO-TP 多帧）和 DBC 里广播的故障码信号，并对照诊断问卷给出故障描述、可能原因、维修建议；同时列出清码等诊断过程。
@@ -26,8 +26,8 @@
 **使用方法：**
 
 ```bash
-git clone https://github.com/gcy2016/VehDiag_sef.git
-cd VehDiag_sef
+git clone https://github.com/gcy2016/CANLink.git
+cd CANLink
 pip install python-can openpyxl cryptography matplotlib
 export VEHDIAG_SRC_KEY='向用户索取的原始文件密码'
 
@@ -55,7 +55,7 @@ python tools/analyze.py ~/logs/报文.blf --dbc CIIA1.5_EV            # 不指�
    - 解密后的 DBC、Excel 和报文明文不要提交到仓库，也不要外传。
    - 默认只读，不要修改或推送仓库，除非用户明确同意。
 
-如果你不满足以上条件，可以请用户在网页版 SEF 里自己打开报文，再把网页 AI 助手“📋 复制给 AI 助手”整理出的数据发给你，你根据这些数据回答（但无法自己再去查别的信号）。
+如果你不满足以上条件，可以请用户在网页版的“离线数据”里自己打开报文，再把网页 AI 助手“📋 复制给 AI 助手”整理出的数据发给你，你根据这些数据回答（但无法自己再去查别的信号）。
 
 —— Claude（Anthropic），2026 年 10 月 13 日
 

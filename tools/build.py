@@ -1,20 +1,22 @@
-"""从 source/*.enc（加密的原始 Excel、DBC）生成 DTC 查询 / 报文分析网页。
+"""从 source/*.enc（加密的原始 Excel、DBC）生成网页的内置资料 docs/data.enc.json。
 
 仓库是公开的，原始文件只以密文存放（source/*.enc），明文不进仓库。
 两个密码：
   原始文件密码 --src-key（或环境变量 VEHDIAG_SRC_KEY）：加解密 source/ 里的原始文件
-  网站访问密码 --pin（或环境变量 VEHDIAG_PIN）：6 位数字，加密网站数据 docs/data.enc.json
+  网页密码 --pin（或环境变量 CANLINK_PIN）：打开网页时输的那个密码，加密 docs/data.enc.json
+                                        （和 docs/secrets.enc.json 是同一个密码）
 
 用法：
   python tools/build.py --src-key KEY --add 新表格.xlsx            # 加密一个原始文件存入 source/
-  python tools/build.py --src-key KEY --pin 123456                 # 生成加密版 docs/
-  python tools/build.py --src-key KEY --pin 123456 --pub ../VehDiag_pub   # 同时生成公开版
+  python tools/build.py --src-key KEY --pin 网页密码               # 生成 docs/data.enc.json
+  python tools/build.py --src-key KEY --pub ../VehDiag_pub         # 生成公开版（VehDiag_pub 仓库，只有故障码查询）
   python tools/build.py --src-key KEY --decrypt 输出目录          # 解出原始文件（查看/修改用）
 
 每个 Sheet 名即车型；读取 显示码 / 高中字节 / 低字节 / 故障描述 / 可能原因 / 维修建议。
 “描述”栏若为英文，按 tools/zh_map.json 译成中文，原文保留为 *_en。
-DBC（source/*.dbc.enc）按 tools/dbc_map.json 挂到各车型，只进加密版；公开版不含 DBC 和报文分析。
-加密版按 tools/code_map.json 把车型显示成项目代号（如 逸达 → C589），公开版仍用市场名。
+DBC（source/*.dbc.enc）按 tools/dbc_map.json 挂到各车型，只进 data.enc.json；公开版不含 DBC。
+data.enc.json 里按 tools/code_map.json 把车型显示成项目代号（如 逸达 → C589），公开版仍用市场名。
+生成后记得把 docs/sw.js 的 VERSION 加 1（离线缓存）。
 """
 import argparse, base64, glob, gzip, io, json, os, re, secrets
 import openpyxl
@@ -123,21 +125,14 @@ def market_name(name):
     return next((k for k, v in code_map.items() if v == name and not k.startswith('_')), name)
 
 
-def page(mode):
-    if mode == 'pub':     # 公开版沿用原页面
-        return open(os.path.join(ROOT, 'tools', 'template_pub.html'), encoding='utf-8').read().replace('__MODE__', mode)
-    html = open(os.path.join(ROOT, 'tools', 'template.html'), encoding='utf-8').read()
-    for name in ('canlog', 'plot', 'ai'):
-        js = open(os.path.join(ROOT, 'tools', 'web', name + '.js'), encoding='utf-8').read()
-        html = html.replace(f'/*__{name.upper()}_JS__*/', js)
-    uds = json.load(open(os.path.join(ROOT, 'tools', 'uds.json'), encoding='utf-8'))
-    return html.replace('/*__UDS_JSON__*/null', json.dumps(uds, ensure_ascii=False, separators=(',', ':')))
+def page_pub():
+    return open(os.path.join(ROOT, 'tools', 'template_pub.html'), encoding='utf-8').read().replace('__MODE__', 'pub')
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src-key', default=os.environ.get('VEHDIAG_SRC_KEY'), help='原始文件密码')
-    ap.add_argument('--pin', default=os.environ.get('VEHDIAG_PIN'), help='6 位数字网站密码，生成加密版到 docs/')
+    ap.add_argument('--pin', default=os.environ.get('CANLINK_PIN'), help='网页密码，生成 docs/data.enc.json')
     ap.add_argument('--pub', help='公开版输出目录（如 ../VehDiag_pub）')
     ap.add_argument('--add', nargs='+', metavar='FILE', help='加密原始文件存入 source/')
     ap.add_argument('--decrypt', metavar='DIR', help='把 source/ 里的原始文件解密到 DIR')
@@ -183,17 +178,13 @@ def main():
                              ensure_ascii=False, separators=(',', ':'))
 
     if a.pin:
-        assert re.fullmatch(r'\d{6}', a.pin), '密码必须是 6 位数字'
-        out = os.path.join(ROOT, 'docs')
-        os.makedirs(out, exist_ok=True)
-        json.dump(encrypt(sef_payload.encode(), a.pin), open(os.path.join(out, 'data.enc.json'), 'w'))
-        open(os.path.join(out, 'index.html'), 'w', encoding='utf-8').write(page('sef'))
-        open(os.path.join(out, '.nojekyll'), 'w').close()
-        print('已生成加密版', out)
+        out = os.path.join(ROOT, 'docs', 'data.enc.json')
+        json.dump(encrypt(sef_payload.encode(), a.pin), open(out, 'w'))
+        print('已生成', out, '（记得把 docs/sw.js 的 VERSION 加 1）')
     if a.pub:
         os.makedirs(a.pub, exist_ok=True)
         open(os.path.join(a.pub, 'data.json'), 'w', encoding='utf-8').write(payload)
-        open(os.path.join(a.pub, 'index.html'), 'w', encoding='utf-8').write(page('pub'))
+        open(os.path.join(a.pub, 'index.html'), 'w', encoding='utf-8').write(page_pub())
         open(os.path.join(a.pub, '.nojekyll'), 'w').close()
         print('已生成公开版', a.pub)
 

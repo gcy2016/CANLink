@@ -1,6 +1,6 @@
 """报文分析（会话端用）：读 blf / asc，按车型 DBC 解析，识别故障码并对照诊断问卷，输出文字报告。
 
-与网页“数据分析”同一套规则（tools/web/canlog.js），方便在对话里直接分析用户发来的报文。
+与网页“离线数据”同一套规则（docs/viewer/canlog.js），方便在对话里直接分析用户发来的报文。
 
 依赖：pip install python-can openpyxl cryptography   （画图另需 matplotlib）
 用法：

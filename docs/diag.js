@@ -8,7 +8,7 @@
   const fdLen = n => n <= 8 ? n : FD_LEN.find(x => x >= n) || 64;
   const hex2 = b => b.toString(16).toUpperCase().padStart(2, '0');
 
-  // 故障码：3 字节 → 显示码（和离线分析、SEF 网站一致）
+  // 故障码：3 字节 → 显示码（和离线数据页一致）
   const dtcText = (b1, b2, b3) =>
     'PCBU'[b1 >> 6] + ((b1 >> 4) & 3).toString(16) + (b1 & 15).toString(16).toUpperCase() + hex2(b2) + hex2(b3);
   const STATUS_BITS = ['当前故障', '本次循环故障', '待定', '已确认', '清码后未完成测试', '清码后曾失败', '本循环未完成测试', '请求报警灯'];

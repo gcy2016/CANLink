@@ -1,6 +1,6 @@
 // 诊断引擎自测：组帧、故障码解析、否定码、安全算法插件，以及实时 ISO-TP 与模拟 ECU 的单帧 / 多帧 / 流控 / 0x78 往返。
 const assert = require('assert');
-const Diag = require('../../docs/canlink/diag.js');
+const Diag = require('../docs/diag.js');
 let pass = 0; const ok = (c, m) => { assert.ok(c, m); console.log('✓', m); pass++; };
 const hex = a => Array.from(a, b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
 

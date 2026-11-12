@@ -1,25 +1,40 @@
-# VehDiag_sef（自用，加密）
+# CANLink（CAN 工具）
 
-售后诊断助手（内部版）：制动控制模块 DTC 查询 + 报文数据分析。仓库公开，但所有数据都是密文：
+手机和电脑都能用的 CAN / CAN FD 工具，硬件用 **MKS CANable 2.0（Pro）**。看报文、录报文、离线分析、诊断、刷写都在一个网页里。方案和阶段见 issue #11。
+
+仓库原来叫 VehDiag_sef（售后诊断助手自用版）。原来那个单独的“故障码查询 + 报文分析”网页已经并进本网页的“查看 → 离线数据”，旧网页删掉了。
+
+- 网页：<https://gcy2016.github.io/CANLink/>（源码在 `docs/`，GitHub Pages 直接发布这个目录）
+- 固件：`firmware/`（vdlink，在 CANable 2.0 开源 slcan 固件上改的，GPLv3）
+
+## 怎么用
+
+1. 用 **Chrome / Edge** 打开网页（UC、QQ、微信、小米自带浏览器不支持网页访问 USB）。安卓手机用 USB-C 公对公**数据线**（OTG）直连 CANable；电脑直接插 USB。iPhone 暂不支持（见 #11）。
+2. 第一次用先到“设置 → 固件”刷 vdlink 固件（下面“刷固件”）。原版固件也能用，但时间戳是手机打的、采样点固定 88%、只听模式不生效。
+3. 页签：**录制 / 查看 / 诊断 / 刷写 / 设置**（按 issue #12 的意见排的）。
+   - **设置**：波特率、采样点、CAN FD、模式（只听 / 正常收发）、刷固件、演示模式、导出 / 导入设置。一般只设一次；通道开着时改了会自动重开通道（录制不中断）。
+   - **录制**：连接设备、打开通道、开始录制、打标记都在这一页；打开通道不会自动录制，点“开始录制”时通道没开会自动打开；录制中下载 / 分享 / 查看置灰，停止后才能用；“总线状态”默认折叠。保存全部、两个标记之间、最后 N 秒或自定义时间段，下载或用手机分享菜单发出去。ASC / BLF 能直接用 CANalyzer 打开。
+   - **查看 → 离线数据**：故障码查询 + 报文数据分析（`docs/viewer/`，在 GNL 通用版的基础上加了内置资料）：各车型的诊断问卷和 DBC 已内置（见下面“内置资料”），选车型就能用；打开 blf / asc，识别故障码、画曲线、报文提取、AI 助手。也可以自己上传别的 DBC / 问卷临时替换，点“清除”换回内置的。录制页点“查看”会把这段录制直接送过来。通道开着时会先提示关闭通道。
+   - **查看 → 在线报文**：按 ID（每个 ID 一行，黄色是 1 秒内变化的字节）或滚动显示；可暂停、按 ID 过滤（`7E0,7E8`、`700-7FF`）。
+   - **诊断**（阶段 2，通用 UDS）：先选 / 建**控制器**（名称、请求 ID、响应 ID、功能寻址 ID、是否 CAN FD、填充字节、29 位扩展帧），一份配置可有多个控制器；ID 等保密内容由用户自己填，不进仓库。下面是会话切换 / 复位 / 保持在线、安全访问（27，算法做成**可加载插件**，贴一段 JS 在本机运行，不进仓库）、读 / 清故障码（对照“离线数据”里加载的诊断问卷显示含义）、读 / 写数据（DID，读、写各一行）、例程控制（31），以及常用指令（UDS 数据，经 ISO-TP 发出并解析应答；每行“发送”在第一个）。诊断应答紧跟在安全访问解锁下面。多帧收发（ISO-TP：单帧 / 首帧 + 连续帧 / 流控 / 0x78 等待）都自动处理。“手动发送原始帧”折叠在最下面，用于非诊断报文和循环发送；CANFD 固定带 BRS，不再单独放 BRS 勾选框。
+   - **刷写**（阶段 3，通用 UDS 刷写）：控制器和安全算法插件都用“诊断”页的。选 Driver / App 文件（S19 / Intel HEX），选文件时显示加载 / 解析进度；指纹诊断仪编号优先自动获取（USB 设备序列号 → 本机标识），取不到才用内置的写死值兜底，日志里会写明来源。刷写流程写成一份可编辑的步骤表（JSON，能导入导出、恢复默认）：扩展会话 → 安全访问 → 编程预处理 → 功能寻址关 DTC / 停收发（静默整车）→ 编程会话 → 安全访问 → 写指纹 → 刷 Driver（每段 34/36/37 + 激活）→ 刷 App（每段擦除 + 34/36/37）→ 校验 → 复位 → 恢复通信 / DTC / 默认会话。换控制器 / 供应商改这份配置就行（步骤 op：req 物理请求 / func 功能寻址不等应答 / security / fingerprint / tp_on / tp_off / flash / delay）。有总进度条、分步状态和日志；中途失败会显示停在哪步，并自动把整车其他控制器恢复过来。刷写前确认电压 / 充电宝、手机不锁屏。多帧按 ECU 流控（BS / STmin）分块发，不一次灌满。
+     - **内置配置 + 开屏密码锁**：控制器、安全算法、诊断仪编号、刷写流程加密内置在网页里（`docs/secrets.enc.json`）。**打开网页先输密码**（整页锁住），输对后这些内容自动载入、页面不显示；密码记在本机，下次打开自动解锁。加密方案：PBKDF2-SHA256（100 万次）+ AES-256-GCM；**仓库是公开的，只放密文，密码不进仓库**。换密码 / 换内容时重新生成这个文件（脚本不入库，密码当面给）。诊断页“安全访问解锁”按钮用的就是内置算法（等级 1）。
+4. 授权过一次的设备，下次打开网页或插上设备会自动连接。
+5. **离线可用**：打开过一次后，网页文件存在本机（`sw.js`），没网、GitHub 打不开也能打开；有网时 3 秒内取到新版本就用新的。可在浏览器菜单里“添加到主屏幕 / 安装应用”。改了网页文件要把 `sw.js` 的 `VERSION` 加 1。
+5. 设置和常用指令存在浏览器里，清理浏览器数据会丢；“设置 → 导出”备份一份。
+6. 以后做安卓 APK：网页代码不用改，APK 用原生代码实现 USB 串口，注入 `window.VdlinkNative`（接口见 `docs/transport.js` 的 `NativeTransport`）。
+
+## 内置资料（诊断问卷 + DBC）
+
+仓库是公开的，资料都只放密文，密码不在仓库里：
 
 | 内容 | 位置 | 用哪个密码解开 |
 |---|---|---|
-| 网站数据 | `docs/data.enc.json` | 网站访问密码（6 位数字） |
+| 网页用的问卷 + DBC 信号定义 | `docs/data.enc.json` | 网页密码（打开网页时输的那个） |
+| 控制器 / 安全算法 / 刷写流程 | `docs/secrets.enc.json` | 网页密码 |
 | 原始 Excel、DBC | `source/*.enc` | 原始文件密码（长密码） |
 
-均为 AES-256-GCM 加密，密钥由密码经 PBKDF2-SHA256（100 万次）派生。密码不在仓库里。
-明文文件已在 `.gitignore` 中排除（`*.xlsx`、`*.dbc` 等），不会被误提交。
-
-## 网页功能
-首页选车型 → 再选功能：
-- **故障码查询**：输入 DTC，查故障描述、可能原因、维修建议。
-- **数据分析**：拖入 `.blf` / `.asc` 报文（只在本机浏览器解析，不上传；最近打开的一个会记在本机浏览器里，切换功能、刷新或下次打开都不用重新选择，点“清除”才删除）
-  - 自动识别故障码：诊断仪读码应答（UDS 19 服务，含多帧）和 DBC 里广播的 DTC 信号，并按该车型问卷给出含义、原因、维修建议；同时列出清码等诊断过程
-  - 列出“故障 / 报警 / 无效”取值的疑似异常信号
-  - 按 DBC 画信号曲线：每个信号一条泳道、各自 Y 轴，上下均分；滚轮/双指缩放、拖动平移、双击复位，悬停看数值
-  - 报文和别的 DBC 更匹配时会提示车型可能选错，也可以手动换 DBC
-  - 报文提取（类似 CANalyzer Trace）：按 ID / 范围 / 报文名筛选；点选一行，DBC 报文显示各信号值，诊断报文说明 ISO-TP 帧类型并按通用诊断知识解释完整请求 / 应答（如 7F 负响应的否定码含义），知识表在 `tools/uds.json`
-- **AI 助手**：接入任意大模型（DeepSeek / 通义千问 / Kimi / 智谱 / 豆包 / OpenAI / Claude，或任意 OpenAI 兼容接口），使用者在“设置”里自备 API Key（只存在本机浏览器）。提问时自动附带网页整理好的当前数据（故障码与问卷解释、诊断过程、曲线窗口内的信号变化、选中的报文），发送前可查看修改；没有 Key 时可“📋 复制”粘贴到其他 AI 使用。代码在 `tools/web/ai.js`
+均为 AES-256-GCM 加密，密钥由密码经 PBKDF2-SHA256（100 万次）派生。明文文件已在 `.gitignore` 中排除（`*.xlsx`、`*.dbc` 等）。
 
 网页上车型按项目代号显示；诊断问卷是通用的，Sheet 名仍用市场名，对应关系见 `tools/code_map.json`。车型与 DBC 的对应见 `tools/dbc_map.json`：
 
@@ -30,38 +45,107 @@
 | CIIA1.5_HEV_PHEV | C363H（四代逸动HEV伯特利）、C363-1H（四代逸动HEV拿森）、C589P低配（A05基础款）、C589ICA1（A05怀挡款）、C589P高配（A05大陆） |
 | CIIA1.5_EV | C589E DY41（欧尚520DY41）、C589E DY51（欧尚520DY51） |
 
-网页要在浏览器里解析报文，所以 DBC 的信号定义和问卷一起放在 `docs/data.enc.json`（网站密码加密）；原始 DBC 文件只在 `source/` 里，用长密码加密。
+更新资料：
 
-## 目录
-- `source/` 加密后的原始文件（Excel 每个 Sheet = 一个车型；`*.dbc.enc` 为 DBC）
-- `tools/build.py` 加解密与生成网页；`tools/template.html` 加密版页面；`tools/template_pub.html` 公开版页面（不含报文分析）
-- `tools/web/canlog.js` 报文读取、DBC 解码、故障码识别；`tools/web/plot.js` 曲线；`tools/web/ai.js` AI 助手；生成时内联进页面
-- `tools/dbc.py` DBC 解析；`tools/dbc_map.json` 车型 → DBC；`tools/code_map.json` 市场名 → 项目代号；`tools/zh_map.json` 英文描述的中文对照
-- `tools/analyze.py` 命令行报文分析（规则与网页相同，在对话里分析报文用）
-- `tools/aeb_response.py` AEB 制动响应时间统计：ACC_AEBActive 激活 → |ESP_LongAccel| 超过目标减速度的时间差，批量输出 Excel
-- `docs/` 生成的网站（GitHub Pages 发布这个目录）
-
-## 常用操作
 ```bash
 pip install openpyxl cryptography
 export VEHDIAG_SRC_KEY='原始文件密码'
-python tools/build.py --add 新表格.xlsx                  # 加密新原始文件存入 source/（之后可删掉明文）
-python tools/build.py --add CIIA2.0_EV.dbc               # 新 DBC 同样加密存入，再在 tools/dbc_map.json 里挂到车型
-python tools/build.py --decrypt plain/                    # 解出原始文件查看/修改
-python tools/build.py --pin 6位网站密码                   # 重新生成 docs/（改网站密码也用这个）
-python tools/build.py --pin 6位网站密码 --pub ../VehDiag_pub  # 同时更新公开版
+python tools/build.py --add 新表格.xlsx        # 加密新原始文件存入 source/（之后可删掉明文）
+python tools/build.py --add CIIA2.0_EV.dbc     # 新 DBC 同样加密存入，再在 tools/dbc_map.json 里挂到车型
+python tools/build.py --decrypt plain/          # 解出原始文件查看/修改
+python tools/build.py --pin 网页密码            # 重新生成 docs/data.enc.json，然后把 docs/sw.js 的 VERSION 加 1
+python tools/build.py --pub ../VehDiag_pub      # 更新公开版（VehDiag_pub 仓库）
 ```
 Excel 里新增的英文描述，在 `tools/zh_map.json` 里补一条“英文: 中文”即可。
 
-命令行分析报文（另需 `pip install python-can`，画图需 `matplotlib`）：
+## 对话里分析报文用的命令行工具
+
+和网页“离线数据”同一套规则，Claude 在对话里分析报文用（另需 `pip install python-can`，画图需 `matplotlib`）：
+
 ```bash
 python tools/analyze.py 报文.blf --model C363H                    # 概况、故障码（对照问卷）、疑似异常信号
 python tools/analyze.py 报文.blf --model C363H --find 轮速        # 搜索信号
 python tools/analyze.py 报文.blf --model C363H --sig ESP_VehicleSpeed --plot 曲线.png --csv 数据.csv
-python tools/analyze.py 报文.blf --model C363H --trace 700-7FF          # 报文列表，诊断报文附解释
-python tools/aeb_response.py 报文目录/ --model C363H --out AEB.xlsx      # AEB 制动响应时间统计（批量，输出 Excel）
+python tools/analyze.py 报文.blf --model C363H --trace 700-7FF    # 报文列表，诊断报文附解释
+python tools/aeb_response.py 报文目录/ --model C363H --out AEB.xlsx   # AEB 制动响应时间统计
+python tools/restbus.py ...                                         # 台架残余总线仿真（issue #9）
 ```
 
-## 发布
-Settings → Pages → Source 选 “Deploy from a branch”，Branch 选 `main`，目录选 `/docs`。
-网址：https://gcy2016.github.io/VehDiag_sef/
+## 目录
+
+- `docs/` 网页（GitHub Pages 发布这个目录）；`docs/viewer/` 是“离线数据”页
+- `firmware/` vdlink 固件；`test/` 网页自测
+- `source/` 加密后的原始文件；`tools/build.py` 加解密、生成内置资料；`tools/dbc.py` DBC 解析；`tools/*_map.json` 对照表
+- `tools/analyze.py`、`aeb_response.py`、`restbus.py`、`uds.json` 命令行报文分析
+
+## 刷固件
+
+板子上 **BOOT** 两针用跳线帽短接，再插 USB，进入芯片自带的烧录模式（USB ID 0483:df11）。
+
+- **安卓手机（推荐）**：网页“固件”页 → 刷入 → 选 STM32 BOOTLOADER → 等“完成”。
+- **电脑**：Windows 上浏览器一般看不到烧录模式的设备（缺 WinUSB 驱动）。用 ST 官方 STM32CubeProgrammer，连 USB，把 `docs/fw/vdlink-1.0.bin` 写到 `0x08000000`。
+- 刷完拔下、**取下跳线帽**、再插上。网页“连接”后显示“固件：vdlink 1.0”就对了。
+- 想刷回原版：MKS 的仓库 makerbase-mks/CANable-MKS 里有原版 `.bin`，同样方法刷。
+
+## vdlink 固件改了什么
+
+| | 原版 slcan 固件 | vdlink 1.0 |
+|---|---|---|
+| CAN 时钟 | 170 MHz，常用波特率要凑 | 80 MHz（CAN 常用值），系统 160 MHz |
+| 波特率 / 采样点 | 只有预设，采样点固定 88% | 网页随便设（命令 `xN` / `xD`） |
+| 收发器延时补偿 | 没开，数据段快了发不出去 | 数据段 ≥1M 自动开 |
+| 只听模式 `M1` | 设了不生效（开通道时被覆盖） | 修好了 |
+| 时间戳 | 没有 | 中断里打微秒时间戳（`Z2`） |
+| 收报文 | 主循环轮询，硬件只有 3 帧缓冲，忙时丢帧 | 中断收进 64 帧缓冲 |
+| 发出去的报文 | 不回显 | 可回显（`xT1`，行首 `>`），录进 ASC 标 Tx |
+| 时钟精度 | 板子没晶振，内部振荡器约 ±1% | 用 USB 帧（1 ms，来自电脑 / 手机的晶振）测误差，开通道前自动校准，剩余误差报给网页修正时间戳 |
+| Bus Off | 不恢复 | 自动恢复 |
+| USB 发送 | 每次 64 字节，队列满了会写坏 | 每次 512 字节，满了整行丢弃并计数 |
+
+原版的命令（`O C Sx Yx Mx Ax V E t T r R d D b B`）全保留，cangaroo、slcand 照样能用。
+
+### 新增命令（都以 `\r` 结尾）
+
+| 命令 | 作用 | 回复 |
+|---|---|---|
+| `Z0` / `Z1` / `Z2` | 时间戳：关 / Lawicel 4 位毫秒 / 8 位十六进制微秒（加在数据后面） | 无 |
+| `xI` | 固件信息 | `xIvdlink,1.0,80000000` |
+| `xS` | 状态 | `xS开,只听,PSR,ECR,错误位,丢帧数,时钟ppm,校准完成,HSITRIM` |
+| `xN<分频>,<tseg1>,<tseg2>,<sjw>` | 仲裁段位时间（十进制，tq 个数） | `\r` 成功 / `\a` 失败 |
+| `xD<分频>,<tseg1>,<tseg2>,<sjw>` | 数据段位时间 | 同上 |
+| `xO0` / `xO1` | ISO / 非 ISO CAN FD | 同上 |
+| `xT0` / `xT1` | 回显发出去的报文（行首加 `>`） | 同上 |
+
+位时间：波特率 = 80 MHz ÷ 分频 ÷ (1 + tseg1 + tseg2)，采样点 = (1 + tseg1) ÷ (1 + tseg1 + tseg2)。设置命令要在通道关闭时发。
+
+### 编译
+
+```sh
+sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi
+firmware/build.sh        # 自动下载原版仓库（只用它的 ST 驱动库），输出 build/vdlink-1.0.bin
+```
+
+改了固件后把 `build/vdlink-1.0.bin` 复制到 `docs/fw/`，版本号改 `Makefile` 的 `FW_VERSION`（网页里的文件名也要跟着改）。
+
+## 自测
+
+```sh
+node test/test_web.js    # 位时间、slcan 解析、录制 → ASC → 用离线数据页的读取代码读回核对
+node test/test_dfu.js    # 模拟 STM32 烧录模式，检查刷固件流程
+node test/test_diag.js   # 诊断：组帧、故障码解析、安全算法插件、ISO-TP 与模拟 ECU 往返
+node test/test_flashfile.js  # 刷写文件解析：S19 / Intel HEX / bin
+node test/test_flash.js  # 刷写流程：对着模拟 ECU 跑完整刷写、流控分块、失败恢复
+node test/test_data.js   # 内置资料：加密后用网页的代码解回来
+```
+
+## 到货后的台架验证（还没做）
+
+硬件到手前，固件只编译过、没在板子上跑过。到货后按这个顺序验：
+
+1. 刷 vdlink，网页连接后显示固件版本；“状态”里板子时钟误差几秒内变成“±几百 ppm”（不再显示“校准中”）。
+2. 台架上 CANalyzer + Vector 接口发报文（500k / 2M FD、500k / 5M FD 各一遍），CANable 只听，两边同时录，对比帧数、内容和时间间隔。
+3. 切正常收发，从网页发普通帧和 FD + BRS 帧，CANalyzer 能收到；网页里显示“→”回显。
+4. 高负载（总线 60% 以上）录 10 分钟，看“丢帧”是不是 0。
+5. 手机上录 10 分钟，看是否掉线、屏幕是否保持常亮。
+
+发现问题记在 issue #11。

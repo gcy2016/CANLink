@@ -159,7 +159,7 @@ const Recorder = (() => {
 
   // ---- Vector BLF 二进制日志 ----
   // 布局与 python-can 的 BLFWriter 对齐（文件头 / 对象头 V1 纳秒时间戳 / 128KB 一个 LogContainer、
-  // zlib 压缩），CANalyzer、python-can、SEF 的 canlog.js 都能读。浏览器里用 CompressionStream 压缩，
+  // zlib 压缩），CANalyzer、python-can、离线数据页的 canlog.js 都能读。浏览器里用 CompressionStream 压缩，
   // 没有这个能力时退回不压缩（容器方式 0，仍是合法 BLF）。
   const BLF = (() => {
     const MAXC = 128 * 1024;

@@ -1,6 +1,6 @@
 // 刷写文件解析自测：Intel HEX、Motorola S19、原始 bin，以及段合并和校验和检查。
 const assert = require('assert');
-const FF = require('../../docs/canlink/flashfile.js');
+const FF = require('../docs/flashfile.js');
 let pass = 0; const ok = (c, m) => { assert.ok(c, m); console.log('✓', m); pass++; };
 const hx = a => Array.from(a, b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
 

@@ -1,8 +1,8 @@
 // 刷写引擎自测：对着模拟刷写 ECU 跑完整 UDS 刷写流程（会话 / 安全 / 预处理 / 静默整车 / 指纹 /
 // 34-36-37 分段下载 / 校验 / 复位 / 恢复），核对收到的刷写字节和原文件一致；另测流控 BS 分块、失败恢复。
 const assert = require('assert');
-const Diag = require('../../docs/canlink/diag.js');
-const Flash = require('../../docs/canlink/flash.js');
+const Diag = require('../docs/diag.js');
+const Flash = require('../docs/flash.js');
 let pass = 0; const ok = (c, m) => { assert.ok(c, m); console.log('✓', m); pass++; };
 
 // 模拟刷写 ECU：物理 reqId/respId，功能寻址 funcId（功能帧只记录、不回）。opt.failOn(req) 返回 true 时回否定码。
