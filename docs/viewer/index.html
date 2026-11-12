@@ -196,7 +196,7 @@
         <p class="hint" id="qnPickT" style="margin:4px 2px 8px"></p>
         <div class="grid" id="models"></div>
       </div>
-      <details id="upBox" open>
+      <details id="upBox">
         <summary class="hint" style="cursor:pointer;margin:12px 2px 8px">自己上传 DBC / 诊断问卷（临时换成别的资料）</summary>
       <div class="ups">
         <label class="up" id="upDbc"><input type="file" id="fDbc" multiple hidden><b>📑 DBC</b><span id="dbcSt">点击选择 .dbc 文件（可多选）</span></label>
@@ -381,7 +381,7 @@ function renderLoaded() {
   if ($('rmQn')) $('rmQn').onclick = e => { e.preventDefault(); UDB = null; model = null; save('clv_qn', null); refresh(true); };
   // 有内置资料时：第 1 步是选车型，上传框收起来；没有时和通用版一样自己上传
   $('s1t').textContent = BUILTIN ? '选择车型' : '加载资料';
-  $('upBox').open = !BUILTIN || !!UDBC || !!UDB;
+  $('upBox').open = BUILTIN_ST !== 'loading' && (!BUILTIN || !!UDBC || !!UDB); // 内置资料还在载入时先别展开上传框，免得进页面先闪一下“加载资料”那套界面
   $('s1hint').textContent = BUILTIN_ST === 'loading' ? '正在载入内置资料…'
     : BUILTIN ? '问卷和 DBC 已内置，选车型后自动对应。自己上传的会记在本机浏览器里，优先于内置的。'
     : 'DBC 用于解析信号、画曲线；诊断问卷用于查询故障码含义。两者都可以不加载，加载后会记在本机浏览器里，下次打开不用重新选择。'
