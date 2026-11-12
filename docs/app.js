@@ -156,6 +156,7 @@
     log(`已连接 ${t.name}，固件 ${S.fw.vdlink ? 'vdlink ' + S.fw.version : S.fw.version}`);
     updateButtons();
     updateTiming();
+    updateSendHint();
     if (S.fw.vdlink) pollStatus();
   }
 
@@ -541,17 +542,29 @@
     }
   }
 
+  // 只检查自动处理不了的情况；通道没打开不算，发的时候自动打开（ensureChan）
   function diagReady() {
-    if (!S.dev) return '先在“录制”页连接设备。';
-    if (!S.open) return '通道没打开：到“录制”页点“打开通道”。';
-    if (S.openSilent) return '现在是只听模式：到“设置”里改成“正常收发”。';
+    if (!S.dev) return '设备没连接：先在“录制”页点“连接设备”。';
+    if (S.open ? S.openSilent : S.silent) return '现在是只听模式：到“设置”里改成“正常收发”。';
     const c = curCfg();
     if (isNaN(c.req) || isNaN(c.resp)) return '先在上面把当前控制器的请求 ID、响应 ID 填好。';
     return '';
   }
+  // 发送前：设备已连上、通道没开时自动打开通道；返回空串表示可以发
+  async function ensureChan(needIds = true) {
+    if (!S.dev) return '设备没连接：先在“录制”页点“连接设备”。';
+    if (S.open ? S.openSilent : S.silent) return '现在是只听模式：到“设置”里改成“正常收发”。';
+    if (needIds) { const why = diagReady(); if (why) return why; }
+    if (!S.open) {
+      log('发送前自动打开通道');
+      await openChannel();
+      if (!S.open) return '通道没能自动打开，看“录制”页“总线状态”里的日志。';
+    }
+    return '';
+  }
   // 发一条 UDS 请求并把结果显示出来；返回引擎结果
   async function udsReq(payload, opt = {}) {
-    const why = diagReady(); if (why) { diagLog('发不了：' + why); log('诊断没发出去：' + why, 'bad'); updateSendHint(); return { blocked: why }; }
+    const why = await ensureChan(); if (why) { diagLog('发不了：' + why); log('诊断没发出去：' + why, 'bad'); updateSendHint(); return { blocked: why }; }
     const c = curCfg();
     const cfg = opt.functional ? { ...c, req: c.func } : c;
     if (opt.functional && isNaN(c.func)) { diagLog('没填功能寻址 ID'); log('诊断没发出去：没填功能寻址 ID', 'bad'); return { blocked: 1 }; }
@@ -899,7 +912,7 @@
   $('fStop').onclick = () => { flashStop = true; $('fStop').textContent = '正在停止…'; };
   $('fStart').onclick = async () => {
     if (flashing) return;
-    const why = diagReady();
+    const why = await ensureChan();
     if (why) { alert('还不能刷写：' + why); return; }
     let flow;
     try { flow = parseFlow(); } catch (e) { alert(e.message); return; }
@@ -952,8 +965,8 @@
     log(`${cycMs ? `循环发送（每 ${cycMs} ms）` : '发送'} → ${hx(f.id, f.ext ? 8 : 3)}${f.ext ? 'x' : ''} ${f.fd ? 'FD' : 'CAN'} ${hexs(f.data)}`);
   }
   async function sendData(dataText) {
-    if (!S.open || S.openSilent) throw new Error('通道没打开，或者是只听模式');
     const f = buildFrame(dataText);
+    const why = await ensureChan(false); if (why) throw new Error(why);
     rawSendFrame(f);
     return f;
   }
@@ -972,8 +985,8 @@
 
   function updateSendHint() {
     const why = diagReady();
-    $('diagHint').innerHTML = why ? '<span class="warn">' + why + '</span>' : '<span class="good">可以诊断。</span>';
-    $('sendHint').innerHTML = why ? '<span class="warn">' + why + '</span>' : '可以发送。';
+    const raw = !S.dev ? '设备没连接：先在“录制”页点“连接设备”。' : (S.open ? S.openSilent : S.silent) ? '现在是只听模式：到“设置”里改成“正常收发”。' : '';
+    $('sendHint').innerHTML = raw ? '<span class="warn">' + raw + '</span>' : (S.open ? '可以发送。' : '可以发送（通道没开时发送会自动打开）。');
     for (const b of document.querySelectorAll('#sendRows button.tx')) b.disabled = !!why;
   }
 
@@ -1084,29 +1097,37 @@
     lines.push('', '在 CANalyzer 里按 ID 1FFFFFF0 过滤可逐个跳到标记帧，序号与本清单一致。');
     return lines.join('\n') + '\n';
   }
-  let marksFile = null;
+  // 通用导出弹窗：预览内容 + 下载 / 分享（标记清单、导出设置、导出日志共用）
+  let dlgFile = null;
+  function openFileDlg(title, file, text) {
+    dlgFile = file;
+    $('fileTitle').textContent = title;
+    $('fileName').textContent = `${file.name}（${file.size < 1024 ? file.size + ' B' : (file.size / 1024).toFixed(1) + ' KB'}）`;
+    $('fileText').hidden = text == null;
+    $('fileText').textContent = text == null ? '' : text;
+    $('fileMsg').textContent = '';
+    $('fileModal').hidden = false;
+  }
+  $('btnFileClose').onclick = () => { $('fileModal').hidden = true; };
+  $('fileModal').addEventListener('click', e => { if (e.target === $('fileModal')) $('fileModal').hidden = true; });
+  $('btnFileDl').onclick = () => { if (dlgFile) { downloadFile(dlgFile); log(`已下载 ${dlgFile.name}`); } };
+  $('btnFileShare').onclick = async () => {
+    const f = dlgFile; if (!f) return;
+    let can = false;
+    try { can = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [f] })); } catch (e) { can = false; }
+    if (!can) { downloadFile(f); $('fileMsg').textContent = '这个浏览器不能直接分享文件，已改为下载。'; log(`不能分享，已改为下载 ${f.name}`); return; }
+    try { await navigator.share({ files: [f], title: f.name }); log(`已分享 ${f.name}`); }
+    catch (e) { if (e.name !== 'AbortError') { downloadFile(f); $('fileMsg').textContent = '分享没有成功，已改为下载。'; } }
+  };
   $('btnMarks').onclick = () => {
     if (!S.rec || !S.rec.marks.length) return;
     const text = marksListText();
-    marksFile = new File([text], marksFileName(), { type: 'text/plain' });
-    $('marksText').textContent = text;
-    $('marksMsg').textContent = '';
-    $('marksModal').hidden = false;
-  };
-  $('btnMarksClose').onclick = () => { $('marksModal').hidden = true; };
-  $('marksModal').addEventListener('click', e => { if (e.target === $('marksModal')) $('marksModal').hidden = true; });
-  $('btnMarksDl').onclick = () => { if (marksFile) { downloadFile(marksFile); log(`已下载标记清单 ${marksFile.name}`); } };
-  $('btnMarksShare').onclick = async () => {
-    if (!marksFile) return;
-    let can = false;
-    try { can = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [marksFile] })); } catch (e) { can = false; }
-    if (!can) { downloadFile(marksFile); $('marksMsg').textContent = '这个浏览器不能直接分享文件，已改为下载。'; return; }
-    try { await navigator.share({ files: [marksFile], title: marksFile.name }); }
-    catch (e) { if (e.name !== 'AbortError') { downloadFile(marksFile); $('marksMsg').textContent = '分享没有成功，已改为下载。'; } }
+    openFileDlg('标记清单', new File([text], marksFileName(), { type: 'text/plain' }), text);
   };
   $('range').onchange = () => {
     const v = $('range').value;
     $('fMarks').hidden = v !== 'marks'; $('fLast').hidden = v !== 'last'; $('fCustom').hidden = v !== 'custom';
+    $('rangeRow').hidden = v === 'all';
   };
   function saveRange() {
     const end = S.rec.t1Last(), v = $('range').value;
@@ -1201,10 +1222,13 @@
   $('btnExport').onclick = () => {
     const out = {};
     try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('canlink.')) out[k.slice(8)] = JSON.parse(localStorage.getItem(k)); } } catch (e) { /* ignore */ }
-    const blob = new Blob([JSON.stringify({ app: 'vdlink-can-tool', version: 1, data: out }, null, 1)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'can_tool_settings.json';
-    document.body.appendChild(a); a.click(); a.remove();
+    const text = JSON.stringify({ app: 'vdlink-can-tool', version: 1, data: out }, null, 1);
+    // 预览里不显示保密项（安全算法、诊断仪编号、刷写流程、开屏密码等），文件里照常保存，导入后能还原
+    const hide = ['pin', 'secCode', 'flashFlow', 'flashTester', 'hostSalt'];
+    const shown = {};
+    for (const [k, v] of Object.entries(out)) shown[k] = hide.includes(k) ? '（保密，预览不显示）' : v;
+    const preview = JSON.stringify({ app: 'vdlink-can-tool', version: 1, data: shown }, null, 1);
+    openFileDlg('导出设置和常用指令', new File([text], 'can_tool_settings.json', { type: 'application/json' }), preview);
   };
   $('btnLog').onclick = () => {
     const p = v => String(v).padStart(2, '0');
@@ -1221,9 +1245,8 @@
       `日志条数：${LOG_LINES.length}`,
       '----',
     ];
-    const blob = new Blob([head.join('\n') + '\n' + LOG_LINES.join('\n') + '\n'], { type: 'text/plain' });
-    downloadFile(new File([blob], `canlink-log-${stamp}.txt`, { type: 'text/plain' }));
-    log('已导出运行日志');
+    const text = head.join('\n') + '\n' + LOG_LINES.join('\n') + '\n';
+    openFileDlg('导出日志', new File([text], `canlink-log-${stamp}.txt`, { type: 'text/plain' }), text);
   };
   $('btnImport').onclick = () => $('importFile').click();
   $('importFile').onchange = async () => {

@@ -46,6 +46,11 @@
   .mkrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .mkrow .mkt { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
   .mkrow input { flex: 1; min-width: 100px; }
+  .saverow { flex-wrap: nowrap; gap: 8px; }
+  .saverow > select, .saverow > input { min-width: 0; }
+  .saverow #recName { flex: 1 1 auto; width: 0; max-width: 260px; }
+  .saverow .b { padding-left: 10px; padding-right: 10px; }
+  @media (max-width: 600px) { .saverow .b { flex: 1 1 auto; padding-left: 4px; padding-right: 4px; font-size: 14px; } .saverow #btnMarks { flex-grow: 2; } }
   .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--blue-d); }
   .row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 10px; }
   .row:last-child { margin-bottom: 0; }
@@ -166,17 +171,19 @@
 
   <div class="card">
     <h2>保存数据</h2>
-    <div class="row">
+    <div class="row saverow">
       <select id="range" aria-label="保存范围"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select>
-      <input type="text" id="recName" placeholder="文件名（可不填）" style="flex:1;min-width:120px">
+      <select id="recFmt" aria-label="保存格式"><option value="blf" selected>BLF</option><option value="asc">ASC</option></select>
+      <input type="text" id="recName" placeholder="文件名（可不填）">
+    </div>
+    <div class="row" id="rangeRow" hidden>
       <div class="fld" id="fMarks" hidden>从 / 到
         <span style="display:flex;gap:6px"><select id="mFrom"></select><select id="mTo"></select></span></div>
       <div class="fld" id="fLast" hidden>最后多少秒<input type="number" id="lastSec" value="60" min="1" style="width:100px"></div>
       <div class="fld" id="fCustom" hidden>从 / 到（秒）
         <span style="display:flex;gap:6px"><input type="number" id="cFrom" value="0" style="width:90px"><input type="number" id="cTo" value="60" style="width:90px"></span></div>
     </div>
-    <div class="row">
-      <select id="recFmt" aria-label="保存格式"><option value="blf" selected>BLF</option><option value="asc">ASC</option></select>
+    <div class="row saverow">
       <button class="b p" id="btnSave" disabled>下载</button>
       <button class="b" id="btnShare" disabled>分享</button>
       <button class="b" id="btnView" disabled>查看</button>
@@ -222,7 +229,6 @@
 </section>
 
 <section id="send">
-  <div class="hint" id="diagHint" style="margin-bottom:10px"></div>
 
   <div class="card">
     <h2>控制器</h2>
@@ -451,16 +457,17 @@
 </section>
 
 </main>
-<div id="marksModal" class="modal" hidden>
+<div id="fileModal" class="modal" hidden>
   <div class="card modal-box">
-    <h2>标记清单</h2>
-    <pre id="marksText" class="markstext"></pre>
+    <h2 id="fileTitle">标记清单</h2>
+    <div class="hint" id="fileName" style="margin-bottom:6px;word-break:break-all"></div>
+    <pre id="fileText" class="markstext"></pre>
     <div class="row">
-      <button class="b p" id="btnMarksDl">下载</button>
-      <button class="b" id="btnMarksShare">分享</button>
-      <button class="b" id="btnMarksClose">关闭</button>
+      <button class="b p" id="btnFileDl">下载</button>
+      <button class="b" id="btnFileShare">分享</button>
+      <button class="b" id="btnFileClose">关闭</button>
     </div>
-    <div class="hint" id="marksMsg"></div>
+    <div class="hint" id="fileMsg"></div>
   </div>
 </div>
 <script src="data.js"></script>
