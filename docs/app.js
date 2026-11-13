@@ -808,8 +808,8 @@
     cmds.forEach((r, i) => {
       h += `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="sendrow swp-in" data-i="${i}">
         <div class="btns"><button class="b p tx" data-a="once">发送</button></div>
-        <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称（可不填）">
-        <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="UDS 数据，如 10 03">
+        <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称">
+        <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="UDS 数据">
       </div></div>`;
     });
     $('sendRows').innerHTML = h || '<div class="hint">还没有指令，点下面的“添加”。</div>';
