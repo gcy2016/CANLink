@@ -193,7 +193,7 @@
 
   function showNoApi() {
     $('noApi').hidden = false;
-    $('noApi').innerHTML = '<span class="bad">本网页程序仅支持使用Chrome (Android/Windows系统)或Edge(Windows系统)浏览器打开，不支持ios系统。</span>';
+    $('noApi').innerHTML = '<span class="bad">本网页程序仅支持在Chrome (Android/Windows系统)或Edge(Windows系统)浏览器中使用，不支持iOS系统。</span>';
   }
 
   function refreshNoApi() { if (!Transport.pick()) showNoApi(); else $('noApi').hidden = true; }
@@ -522,7 +522,7 @@
     else if (parts.length === 1) { c.req = parts[0]; }
     saveCtrls(); fillCtrlFields(); renderResp(true);
   });
-  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); refreshSecSt(); flashCtrlHint(); });
+  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); flashCtrlHint(); });
   $('ctrlAdd').onclick = () => { const nm = prompt('输入控制器名称', '控制器 ' + (ctrls.length + 1)); if (nm === null) return; ctrls.push({ name: nm.trim() || ('控制器 ' + (ctrls.length + 1)), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
   $('ctrlDel').onclick = () => { const c = ctrls[curCtrl]; if (c && c.builtin) { alert('内置控制器不能删除（内置的安全算法等配置挂在它上面，删了就没了）。'); return; } if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${c.name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
 
@@ -628,8 +628,6 @@
   let secCode = store.get('secCode', '');
   // 当前控制器自带的算法优先（内置控制器可多套、各带一套，如 IBCU / EPBi）；没有才用全局那套
   const curSec = () => { const c = ctrls[curCtrl] || {}; return c.sec || secCode; };
-  const refreshSecSt = () => { $('secSt').textContent = curSec() ? '内置算法已载入' : '未载入（请先在开屏输入密码解锁）'; };
-  refreshSecSt();
   $('btnSec').onclick = async () => {
     const lvl = 1, reqSub = 1, keySub = 2;
     // 先紧跟着进扩展会话、再连着发 27（问题 1）：分开手点隔好几秒，会话早掉回默认，27 必被 7F 拒
@@ -838,7 +836,7 @@
     return JSON.parse(new TextDecoder().decode(pt));
   }
   function applySecrets(sec) {
-    if (sec.secCode) { secCode = sec.secCode; store.set('secCode', secCode); refreshSecSt(); }
+    if (sec.secCode) { secCode = sec.secCode; store.set('secCode', secCode); }
     if (sec.tester) { flashTester = sec.tester; store.set('flashTester', sec.tester); }
     if (sec.flow) { $('fFlow').value = JSON.stringify(sec.flow, null, 1); store.set('flashFlow', $('fFlow').value); $('fFlowSt').textContent = '已载入内置流程'; }
     if (sec.ctrl) {
@@ -856,7 +854,6 @@
       }
       saveCtrls(); renderCtrlSel();
     }
-    refreshSecSt();
     flashCtrlHint();
   }
 
@@ -1074,7 +1071,6 @@
     respRender = now;
     const c = curCfg(), rs = respIds();
     const list = S.recent.filter(m => (m.tx && m.id === c.req) || (!m.tx && rs.includes(m.id))).slice(-30);
-    $('respInfo').textContent = !isNaN(c.req) ? `（发送 ${hx(c.req, 3)}，回复 ${rs.map(x => hx(x, 3)).join('/') || '—'}）` : '';
     let h = '<table><thead><tr><th>时间 s</th><th>ID</th><th>数据</th></tr></thead><tbody>';
     for (let i = list.length - 1; i >= 0; i--) {
       const m = list[i];
@@ -1348,9 +1344,7 @@
   };
   // 离线缓存：打开过一次后，没网 / GitHub 打不开也能用
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => {
-      $('offlineInfo').textContent = '离线可用：已存到本机，没网时也能打开。可以在浏览器菜单里“添加到主屏幕 / 安装应用”，像 APP 一样从桌面打开。';
-    }).catch(() => { $('offlineInfo').textContent = '离线缓存没开成（浏览器不支持或在无痕模式）。'; });
+    navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   // 请浏览器尽量不要自动清掉本站数据
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
