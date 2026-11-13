@@ -525,7 +525,7 @@
     else if (parts.length === 1) { c.req = parts[0]; }
     saveCtrls(); fillCtrlFields(); renderResp(true);
   });
-  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); });
+  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); refreshSecSt(); flashCtrlHint(); });
   $('ctrlAdd').onclick = () => { const nm = prompt('输入控制器名称', '控制器 ' + (ctrls.length + 1)); if (nm === null) return; ctrls.push({ name: nm.trim() || ('控制器 ' + (ctrls.length + 1)), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
   $('ctrlDel').onclick = () => { const c = ctrls[curCtrl]; if (c && c.builtin) { alert('内置控制器不能删除（内置的安全算法等配置挂在它上面，删了就没了）。'); return; } if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${c.name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
 
@@ -633,7 +633,9 @@
 
   // 安全访问（算法随开屏密码内置载入，不在页面显示；等级固定 1）
   let secCode = store.get('secCode', '');
-  const refreshSecSt = () => { $('secSt').textContent = secCode ? '内置算法已载入' : '未载入（请先在开屏输入密码解锁）'; };
+  // 当前控制器自带的算法优先（内置控制器可多套、各带一套，如 IBCU / EPBi）；没有才用全局那套
+  const curSec = () => { const c = ctrls[curCtrl] || {}; return c.sec || secCode; };
+  const refreshSecSt = () => { $('secSt').textContent = curSec() ? '内置算法已载入' : '未载入（请先在开屏输入密码解锁）'; };
   refreshSecSt();
   $('btnSec').onclick = async () => {
     const lvl = 1, reqSub = 1, keySub = 2;
@@ -644,9 +646,9 @@
     if (!seedR.data || seedR.data[0] !== 0x67) return;
     const seed = seedR.data.slice(2);
     if (seed.every(b => b === 0)) { $('diagOut').innerHTML += '<div class="good">种子全 0，可能已经解锁。</div>'; return; }
-    if (!secCode) { $('diagOut').innerHTML += '<div class="warn">还没载入安全算法，请先在开屏输入密码解锁。种子：' + hexs(seed) + '</div>'; return; }
+    if (!curSec()) { $('diagOut').innerHTML += '<div class="warn">还没载入安全算法，请先在开屏输入密码解锁。种子：' + hexs(seed) + '</div>'; return; }
     let key;
-    try { key = Diag.runKeyPlugin(secCode, seed, lvl, seedR.data); }
+    try { key = Diag.runKeyPlugin(curSec(), seed, lvl, seedR.data); }
     catch (e) { $('diagOut').innerHTML += '<div class="bad">算法出错：' + esc(e.message) + '</div>'; return; }
     if (!key || !key.length) { $('diagOut').innerHTML += '<div class="bad">算法没返回 key</div>'; return; }
     await udsReq([0x27, keySub, ...key]);
@@ -812,6 +814,17 @@
       if (idx < 0) { ctrls.push({ ...sec.ctrl, builtin: true }); idx = ctrls.length - 1; } else ctrls[idx] = { ...ctrls[idx], ...sec.ctrl, builtin: true };
       curCtrl = idx; saveCtrls(); renderCtrlSel();
     }
+    if (Array.isArray(sec.ctrls)) {
+      for (const ec of sec.ctrls) {
+        if (!ec || !ec.name) continue;
+        let idx = ctrls.findIndex(c => c.name === ec.name);
+        if (idx < 0) { ctrls.push({ ...ec, builtin: true }); idx = ctrls.length - 1; }
+        else ctrls[idx] = { ...ctrls[idx], ...ec, builtin: true };
+        if (sec.ctrl && ec.name === sec.ctrl.name) curCtrl = idx;
+      }
+      saveCtrls(); renderCtrlSel();
+    }
+    refreshSecSt();
     flashCtrlHint();
   }
 
@@ -880,7 +893,7 @@
 
   function flashCtrlHint() {
     const c = ctrls[curCtrl] || {};
-    $('fCtrl').innerHTML = `当前控制器：<b>${esc(c.name || '控制器')}</b>　请求 ${esc(c.req || '?')} / 响应 ${esc(c.resp || '?')} / 功能 ${esc(c.func || '?')}　${c.fd ? 'CAN FD' : '经典 CAN'}　安全算法：${secCode ? '已载入' : '<span class="warn">未载入</span>'}（控制器在“诊断”页选）`;
+    $('fCtrl').innerHTML = `当前控制器：<b>${esc(c.name || '控制器')}</b>　请求 ${esc(c.req || '?')} / 响应 ${esc(c.resp || '?')} / 功能 ${esc(c.func || '?')}　${c.fd ? 'CAN FD' : '经典 CAN'}　安全算法：${curSec() ? '已载入' : '<span class="warn">未载入</span>'}（控制器在“诊断”页选）`;
   }
 
   function flog(msg, cls) {
@@ -955,7 +968,7 @@
     await new Promise(r => setTimeout(r, 800));
     try {
       const r = await Flash.runFlash({
-        tp: S.tp, cfg: curCfg(), flow, files: flashFiles, keyPlugin: secCode, tester, Diag,
+        tp: S.tp, cfg: curCfg(), flow, files: flashFiles, keyPlugin: curSec(), tester, Diag,
         hooks: {
           log: flog,
           shouldStop: () => flashStop,
