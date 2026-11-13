@@ -1114,6 +1114,7 @@
   $('btnFileDl').onclick = () => { if (dlgFile) { downloadFile(dlgFile); log(`已下载 ${dlgFile.name}`); } };
   $('btnFileShare').onclick = async () => {
     const f = dlgFile; if (!f) return;
+    if (shareBlockedByBrowser(f)) { downloadFile(f); $('fileMsg').textContent = '这个浏览器不能直接分享这类文件，已改为下载。'; log(`当前浏览器不允许分享这类文件，已改为下载：${f.name}`); return; }
     let can = false;
     try { can = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [f] })); } catch (e) { can = false; }
     if (!can) { downloadFile(f); $('fileMsg').textContent = '这个浏览器不能直接分享文件，已改为下载。'; log(`不能分享，已改为下载 ${f.name}`); return; }
@@ -1155,6 +1156,16 @@
     const blob = await S.rec.toASC(a, b, { comment: `vdlink CAN tool, ${S.nominal / 1000}k${S.fdOn ? ' / ' + S.data / 1e6 + 'M FD' : ''}${S.silent ? ', listen-only' : ''}` });
     return new File([blob], fileName(), { type: 'text/plain' });
   }
+
+  // Chromium（安卓/桌面 Chrome、Edge）分享文件有类型白名单，只放行图片/音视频/PDF/文本；
+  // 且它的 canShare 不查文件类型、会假报 true，要等 share() 才以 NotAllowedError 拒绝。
+  // .blf/.asc 必然被拒，不如一开始就说明原因并改下载；iOS Safari 不受此限（其 canShare 是准的）。
+  function shareBlockedByBrowser(f) {
+    if (!/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent || '')) return false;
+    const ext = ((f.name.match(/\.([a-z0-9]+)$/i) || [])[1] || '').toLowerCase();
+    const ok = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'wav', 'ogg', 'flac', 'm4a', 'mp4', 'webm', 'mov', 'pdf', 'txt', 'csv', 'html', 'htm'];
+    return !ok.includes(ext);
+  }
   function downloadFile(f) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(f); a.download = f.name;
@@ -1181,6 +1192,12 @@
     let f;
     try { f = await makeFile(); }
     catch (e) { alert('生成录制文件失败：' + e.message); return; }
+    if (shareBlockedByBrowser(f)) {
+      downloadFile(f); S.saved = true;
+      log(`当前浏览器不允许分享这类文件，已改为下载：${f.name}`, 'bad');
+      alert('这个浏览器只允许网页分享图片、视频、PDF、文本几类文件，.blf/.asc 分享不出去（浏览器限制）。已改为下载，下载后可以在文件管理里长按该文件、再分享到微信等应用。');
+      return;
+    }
     let can = false;
     try { can = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [f] })); } catch (e) { can = false; }
     if (!can) {
