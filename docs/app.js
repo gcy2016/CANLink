@@ -152,7 +152,7 @@
     $('chipDev').classList.add('on');
     const fwText = S.fw.vdlink ? 'vdlink ' + esc(S.fw.version) : '<span class="warn">' + esc(S.fw.version) + '（原版，建议到“设置 → 固件”刷 vdlink）</span>';
     $('devInfo').innerHTML = `已连接：<b>${esc(t.name)}</b><br>固件：${fwText}`;
-    $('fwNow').innerHTML = `当前：${esc(t.name)}，${fwText}`;
+    $('fwNow').innerHTML = `当前：${esc(t.name)}${fwText && fwText !== t.name ? '，' + fwText : ''}`;
     log(`已连接 ${t.name}，固件 ${S.fw.vdlink ? 'vdlink ' + S.fw.version : S.fw.version}`);
     updateButtons();
     updateTiming();
@@ -1257,9 +1257,9 @@
       const bin = await (await fetch('fw/vdlink-1.0.bin', { cache: 'no-cache' })).arrayBuffer();
       await dfu.open();
       await dfu.flash(bin, (p, t) => { bar.style.width = (p * 100).toFixed(0) + '%'; msg.textContent = t; });
-      msg.innerHTML = '<span class="good">完成。拔下板子、取下 BOOT 跳线帽，再插上就是 vdlink 固件。</span>';
+      msg.innerHTML = '<span class="good">完成。拔下板子、拿掉短接导线，连接到当前设备就是 vdlink 固件。</span>';
     } catch (e) {
-      if (e && e.name === 'NotFoundError') { msg.textContent = '没有选设备。确认 BOOT 跳线帽已插上、重新插了 USB。'; return; }
+      if (e && e.name === 'NotFoundError') { msg.textContent = '没有选设备。确认 BOOT 已用导线短接、重新连接到当前设备。'; return; }
       msg.innerHTML = `<span class="bad">失败：${esc(e.message || e)}</span>`;
     } finally {
       await dfu.close();

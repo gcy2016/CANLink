@@ -1,5 +1,5 @@
 // 用 WebUSB 给 STM32 刷固件（芯片自带的 DFU 烧录模式，DfuSe 协议）。
-// 板子插上 BOOT 跳线帽再接 USB，就进入烧录模式（USB ID 0483:df11）。
+// 板子用导线短接 BOOT 再接 USB，就进入烧录模式（USB ID 0483:df11）。
 const Dfu = (() => {
   const DETACH = 0, DNLOAD = 1, UPLOAD = 2, GETSTATUS = 3, CLRSTATUS = 4, ABORT = 6;
   const S = { dfuIDLE: 2, dfuDNLOAD_SYNC: 3, dfuDNBUSY: 4, dfuDNLOAD_IDLE: 5, dfuMANIFEST_SYNC: 6, dfuMANIFEST: 7, dfuUPLOAD_IDLE: 9, dfuERROR: 10 };
