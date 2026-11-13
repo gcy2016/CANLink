@@ -136,6 +136,7 @@
       return;
     }
     S.dev = t;
+    t.name = String(t.name || '').replace(/\s*\(CANable[^)]*\)\s*$/, '');  // 设备名只留固件名（如 vdlink 1.0），去掉固件 USB 描述里的括号后缀
     $('noApi').hidden = true;
     await send('C').catch(() => {});
     await new Promise(r => setTimeout(r, 100));
