@@ -571,12 +571,6 @@
     const r = await S.tp.request(cfg, Uint8Array.from(payload), { timeout: opt.timeout || 2500 });
     showResp(payload, r, opt);
     logUds(payload, r);
-    // 进非默认会话（扩展 / 编程）成功就自动开保持在线：会话约 5 秒没请求就自己掉，
-    // 手动一步步点很容易在间隙里超时（问题 1 里 27 就是这么被 7F 拒的）；回默认会话则自动关。
-    if (payload[0] === 0x10 && r.data && r.data[0] === 0x50) {
-      if (payload[1] === 0x01) tpStop();
-      else tpStart(true);
-    }
     return r;
   }
   function showResp(reqBytes, r, opt = {}) {
