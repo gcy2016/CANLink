@@ -20,6 +20,7 @@
   const DEFAULT_FLOW = {
     alfid: 0x44,          // 请求下载的地址/长度格式：高 4 位=地址字节数，低 4 位=长度字节数
     timeout: 5000,        // 单条 UDS 等待毫秒（擦除 / 校验慢，ECU 会回 0x78 自动续时）
+    stepGap: 100,         // 每步之间至少隔多少毫秒（原厂工具每步隔 100 ms；走网关时功能寻址后紧跟物理请求会被网关丢掉）
     steps: [
       { op: 'req', name: '进扩展会话', data: '10 03' },
       { op: 'func', name: '功能寻址扩展会话', data: '10 83' },
@@ -60,6 +61,8 @@
     const Diag = o.Diag || (typeof window !== 'undefined' ? window.Diag : null);
     const tester = o.tester && o.tester.length ? Array.from(o.tester) : [0, 0, 0, 0];
     const timeout = flow.timeout || 5000;
+    // 步间间隔：流程里没写就按 100 ms（内置 / 旧版流程没有这个字段也照样生效）
+    const stepGap = flow.stepGap != null ? Math.max(0, +flow.stepGap || 0) : 100;
     const alfid = flow.alfid || 0x44;
     const addrLen = (alfid >> 4) & 0xF, lenLen = alfid & 0xF;
     const log = (m, c) => hooks.log && hooks.log(m, c);
@@ -151,6 +154,7 @@
     }
 
     const steps = flow.steps || [];
+    let sentReq = false;
     try {
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i];
@@ -158,7 +162,14 @@
         hooks.onStep && hooks.onStep(i, steps.length, s, 'run');
         log('▶ ' + (s.name || s.op));
         switch (s.op) {
-          case 'req': await uds(parseHex(s.data), s.timeout); break;
+          case 'req':
+            if (!sentReq) {
+              // 第一条物理请求超时重发一次：刚开始时手机 / USB 可能还有积压，第一条应答容易丢
+              sentReq = true;
+              try { await uds(parseHex(s.data), s.timeout); }
+              catch (e) { if (!/超时/.test(e.message)) throw e; log('第一条请求没等到应答，重发一次', 'warn'); await uds(parseHex(s.data), s.timeout); }
+            } else await uds(parseHex(s.data), s.timeout);
+            break;
           case 'func': sendFunc(parseHex(s.data)); if (s.disablesBus) busDisabled = true; break;
           case 'security': await security(s.level || 1); break;
           case 'fingerprint': await fingerprint(s); break;
@@ -169,7 +180,8 @@
           default: throw new Error('未知步骤：' + s.op);
         }
         hooks.onStep && hooks.onStep(i, steps.length, s, 'ok');
-        if (s.wait) await sleep(s.wait);
+        const w = Math.max(s.wait || 0, i < steps.length - 1 ? stepGap : 0);
+        if (w) await sleep(w);
       }
       stopTp();
       log('✅ 全部完成', 'good');
