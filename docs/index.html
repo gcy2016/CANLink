@@ -92,6 +92,9 @@
   .r { text-align: right; }
   .sendrow { display: grid; grid-template-columns: auto minmax(120px, 180px) 1fr auto; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
   .sendrow:first-child { border-top: 0; }
+  .didrow { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; border-top: 1px dashed var(--line); padding: 6px 0; }
+  .didrow:first-child { border-top: 0; padding-top: 0; }
+  .delx { flex: 0 0 auto; width: 30px; padding-left: 0; padding-right: 0; color: var(--muted); }
   .sendrow .btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 4px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -284,16 +287,15 @@
   </div>
 
   <div class="card">
-    <h2>读 / 写数据（DID）</h2>
-    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
-      <button class="b p" id="btnReadDid">读</button>
-      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didReadId" placeholder="如 FD54" style="width:84px"></div>
-    </div>
-    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
-      <button class="b r" id="btnWriteDid">写</button>
-      <div class="fld" style="flex:0 0 auto">DID<input type="text" class="mono" id="didWriteId" placeholder="如 FD54" style="width:84px"></div>
-      <div class="fld" style="flex:1 1 auto;min-width:0">写入数据<input type="text" class="mono" id="didData" placeholder="十六进制，如 01" style="width:100%"></div>
-    </div>
+    <h2>读取数据（22）</h2>
+    <div id="didReadRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddReadDid">＋ 添加</button></div>
+  </div>
+
+  <div class="card">
+    <h2>写入数据（2E）</h2>
+    <div id="didWriteRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddWriteDid">＋ 添加</button></div>
   </div>
 
   <div class="card">

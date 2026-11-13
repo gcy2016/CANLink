@@ -681,15 +681,54 @@
   };
 
   // 读 / 写 DID（两行各一个 DID，读、写可以填不同的 DID）
-  $('btnReadDid').onclick = () => { try { const did = parseHex($('didReadId').value); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (e) { diagLog(e.message); } };
-  $('btnWriteDid').onclick = async () => {
-    try {
-      const did = parseHex($('didWriteId').value), data = parseHex($('didData').value);
-      if (did.length < 1) throw new Error('填 DID');
-      if (!confirm(`写 DID ${hexs(did)}：${hexs(data)}？`)) return;
-      await udsReq([0x2E, ...did, ...data]);
-    } catch (e) { diagLog(e.message); }
-  };
+  // 读取数据（22）：可多行，每行一个 DID，行尾小 ✕ 删除（只剩一行时不显示），底部「＋ 添加」加行；内容存本机
+  let readDids = store.get('readDids', ['']);
+  if (!Array.isArray(readDids) || !readDids.length) readDids = [''];
+  const saveReadDids = () => store.set('readDids', readDids);
+  function renderReadDids() {
+    $('didReadRows').innerHTML = readDids.map((d, i) => `<div class="didrow" data-i="${i}">
+      <button class="b p" data-a="read">读</button>
+      <input type="text" class="mono" data-k="did" value="${esc(d)}" placeholder="DID，如 FD54" style="flex:1 1 auto;min-width:0">
+      ${readDids.length > 1 ? '<button class="b delx" data-a="del" title="删除这一行">✕</button>' : ''}
+    </div>`).join('');
+  }
+  $('didReadRows').addEventListener('change', e => { const row = e.target.closest('.didrow'); if (row) { readDids[+row.dataset.i] = e.target.value; saveReadDids(); } });
+  $('didReadRows').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const i = +b.closest('.didrow').dataset.i;
+    if (b.dataset.a === 'del') { readDids.splice(i, 1); saveReadDids(); renderReadDids(); }
+    else if (b.dataset.a === 'read') { try { const did = parseHex(readDids[i]); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (err) { diagLog(err.message); } }
+  });
+  $('btnAddReadDid').onclick = () => { readDids.push(''); saveReadDids(); renderReadDids(); const ins = document.querySelectorAll('#didReadRows input'); if (ins.length) ins[ins.length - 1].focus(); };
+  renderReadDids();
+  // 写入数据（2E）：同样多行，写之前保留确认框
+  let writeDids = store.get('writeDids', [{ did: '', data: '' }]);
+  if (!Array.isArray(writeDids) || !writeDids.length) writeDids = [{ did: '', data: '' }];
+  const saveWriteDids = () => store.set('writeDids', writeDids);
+  function renderWriteDids() {
+    $('didWriteRows').innerHTML = writeDids.map((r, i) => `<div class="didrow" data-i="${i}">
+      <button class="b r" data-a="write">写</button>
+      <input type="text" class="mono" data-k="did" value="${esc(r.did || '')}" placeholder="DID" style="width:84px;flex:0 0 auto">
+      <input type="text" class="mono" data-k="data" value="${esc(r.data || '')}" placeholder="写入数据，如 01" style="flex:1 1 auto;min-width:0">
+      ${writeDids.length > 1 ? '<button class="b delx" data-a="del" title="删除这一行">✕</button>' : ''}
+    </div>`).join('');
+  }
+  $('didWriteRows').addEventListener('change', e => { const row = e.target.closest('.didrow'); if (row && e.target.dataset.k) { writeDids[+row.dataset.i][e.target.dataset.k] = e.target.value; saveWriteDids(); } });
+  $('didWriteRows').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const i = +b.closest('.didrow').dataset.i, r = writeDids[i];
+    if (b.dataset.a === 'del') { writeDids.splice(i, 1); saveWriteDids(); renderWriteDids(); }
+    else if (b.dataset.a === 'write') {
+      try {
+        const did = parseHex(r.did), data = parseHex(r.data);
+        if (did.length < 1) throw new Error('填 DID');
+        if (!confirm(`写 DID ${hexs(did)}：${hexs(data)}？`)) return;
+        await udsReq([0x2E, ...did, ...data]);
+      } catch (err) { diagLog(err.message); }
+    }
+  });
+  $('btnAddWriteDid').onclick = () => { writeDids.push({ did: '', data: '' }); saveWriteDids(); renderWriteDids(); const ins = document.querySelectorAll('#didWriteRows input[data-k=did]'); if (ins.length) ins[ins.length - 1].focus(); };
+  renderWriteDids();
   // 例程控制
   $('btnRtn').onclick = () => {
     try { const id = parseHex($('rtnId').value); if (id.length < 2) throw new Error('例程 ID 要 2 字节，如 0203'); const param = $('rtnParam').value.trim() ? parseHex($('rtnParam').value) : []; udsReq([0x31, parseInt($('rtnType').value, 16), ...id, ...param]); }
