@@ -47,6 +47,16 @@
     if (u && u.services && u.services[hex2(sid)]) return u.services[hex2(sid)];
     return '服务 0x' + hex2(sid);
   }
+  // 从一串字节里找最长的可读 ASCII 片段（版本号、零件号这类文本型数据），没有就返回空串
+  function asciiText(bytes) {
+    let best = '', run = '';
+    for (const b of bytes) {
+      if (b >= 0x20 && b <= 0x7E) { run += String.fromCharCode(b); if (run.length > best.length) best = run; }
+      else run = '';
+    }
+    const t = best.trim();
+    return t.length >= 3 && /[0-9A-Za-z]/.test(t) ? t : '';
+  }
 
   // 把一条 UDS 请求组成 ISO-TP 帧（纯函数）。返回 [Uint8Array,...]（每个是一帧的数据，已按需填充）。
   // cfg: { fd, pad }。payload: 数字数组 / Uint8Array（完整 UDS，含 SID）。
@@ -212,7 +222,7 @@
     cancel() { this.rx = null; this.tx = null; }
   }
 
-  const API = { FD_LEN, fdLen, dtcText, statusText, STATUS_BITS, parseDtcResp, nrcText, serviceName, buildFrames, runKeyPlugin, IsoTp };
+  const API = { FD_LEN, fdLen, dtcText, statusText, STATUS_BITS, parseDtcResp, nrcText, serviceName, asciiText, buildFrames, runKeyPlugin, IsoTp };
   if (typeof module !== 'undefined') module.exports = API;
   if (typeof window !== 'undefined') window.Diag = API;
 })();

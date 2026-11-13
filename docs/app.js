@@ -76,7 +76,6 @@
     let s = f(nom, '仲裁段');
     if (fd) s += '；' + f(dat, '数据段');
     if (S.fw && !S.fw.vdlink) s += '。原版固件只能用预设（采样点固定 88%，数据段只有 2M / 5M）';
-    $('timingInfo').textContent = s;
   }
 
   // ---------------- 连接 ----------------
@@ -178,7 +177,7 @@
     releaseWake();
     $('chipDev').textContent = '未连接'; $('chipDev').classList.remove('on');
     setBusChip();
-    $('devInfo').textContent = '未连接。用 USB 数据线连上 CANable 后点“连接设备”。'; $('fwNow').textContent = '当前：未连接';
+    $('devInfo').textContent = '未连接。'; $('fwNow').textContent = '当前：未连接';
     updateButtons();
     updateSendHint();
     refreshNoApi();
@@ -194,8 +193,7 @@
 
   function showNoApi() {
     $('noApi').hidden = false;
-    $('noApi').innerHTML = '<span class="bad">这个浏览器不能访问 USB 设备（UC、QQ、微信、小米自带浏览器、iPhone 都不行）。' +
-      '请用 <b>Chrome</b>（安卓可在应用商店装）或电脑上的 Chrome / Edge 打开。</span>';
+    $('noApi').innerHTML = '<span class="bad">本网页程序仅支持使用Chrome (Android/Windows系统)或Edge(Windows系统)浏览器打开，不支持ios系统。</span>';
   }
 
   function refreshNoApi() { if (!Transport.pick()) showNoApi(); else $('noApi').hidden = true; }
@@ -406,7 +404,6 @@
     setSeg('tmode', mode);
     $('onlineBox').hidden = mode !== 'online';
     $('offlineBox').hidden = mode !== 'offline';
-    $('tmodeHint').textContent = mode === 'offline' ? '打开 blf / asc 文件，或在“录制”页点“查看”。车型在下面选。' : '';
     if (mode === 'offline') {
       const f = $('viewerFrame');
       if (!f.src) { viewerReady = false; f.src = 'viewer/'; }
@@ -464,7 +461,6 @@
           `<td class="d">${d}</td><td class="r">${e.period ? (e.period * 1000).toFixed(e.period < 0.1 ? 1 : 0) : '—'}</td><td class="r">${e.cnt}</td></tr>`;
       }
       box.innerHTML = h + '</tbody></table>';
-      $('traceInfo').textContent = `${rows.length} 个 ID（共 ${S.ids.size} 个）。“→”是本机发出的；黄色是 1 秒内变化的字节；周期单位 ms。`;
     } else {
       const list = S.scroll.filter(m => pass(m.id)).slice(-SCROLL_MAX);
       let h = '<table><thead><tr><th>时间 s</th><th>ID</th><th class="hide-s">类型</th><th>数据</th></tr></thead><tbody>';
@@ -474,7 +470,6 @@
           `<td class="hide-s">${typeText(m)} ${m.data.length}</td><td class="d">${Array.from(m.data, b => hx(b)).join(' ')}</td></tr>`;
       }
       box.innerHTML = h + '</tbody></table>';
-      $('traceInfo').textContent = `最近 ${list.length} 帧，新的在上面。`;
     }
   }
   setInterval(() => renderTrace(false), 250);
@@ -503,8 +498,9 @@
   }
   function linkCBrs() { const b = $('cBrs'); b.disabled = !$('cFd').checked; b.closest('label').classList.toggle('off', b.disabled); }
   $('cFd').addEventListener('change', linkCBrs);
+  const dispName = c => String((c && c.name) || '').replace(/（内置）\s*$/, '');
   function renderCtrlSel() {
-    $('ctrlSel').innerHTML = ctrls.map((c, i) => `<option value="${i}"${i === curCtrl ? ' selected' : ''}>${esc(c.name || ('控制器 ' + (i + 1)))}</option>`).join('');
+    $('ctrlSel').innerHTML = ctrls.map((c, i) => `<option value="${i}"${i === curCtrl ? ' selected' : ''}>${esc(dispName(c) || ('控制器 ' + (i + 1)))}</option>`).join('');
     fillCtrlFields();
   }
   function fillCtrlFields() {
@@ -583,6 +579,8 @@
     else if (r.data) {
       h += `<div class="mono" style="color:var(--ok)">← ${hexs(r.data)}</div>`;
       if (r.data[0] === (sid | 0x40)) h += `<div class="good">正响应（${esc(Diag.serviceName(sid))} 成功）</div>`;
+      const at = Diag.asciiText(r.data);
+      if (at) h += `<div>文字信息：${esc(at)}</div>`;
     }
     if (!opt.keepList) $('diagOut').innerHTML = h;
     else $('diagOut').innerHTML = h;
@@ -883,12 +881,12 @@
       return `<div><b>${label}</b>：${r.type.toUpperCase()}，${r.segs.length} 段，共 ${FlashFile.total(r.segs)} 字节<br><span class="hint">${esc(segs)}</span></div>`;
     };
     const h = one('Driver', flashFiles.driver) + one('App', flashFiles.app);
-    $('fInfo').innerHTML = h || '选文件后这里显示识别出的格式和各段地址 / 大小。';
+    $('fInfo').innerHTML = h || '';
   }
 
   function flashCtrlHint() {
     const c = ctrls[curCtrl] || {};
-    $('fCtrl').innerHTML = `当前控制器：<b>${esc(c.name || '控制器')}</b>　请求 ${esc(c.req || '?')} / 响应 ${esc(c.resp || '?')} / 功能 ${esc(c.func || '?')}　${c.fd ? 'CAN FD' : '经典 CAN'}　安全算法：${curSec() ? '已载入' : '<span class="warn">未载入</span>'}（控制器在“诊断”页选）`;
+    $('fCtrl').innerHTML = `当前控制器：<b>${esc(dispName(c) || '控制器')}</b>`;
   }
 
   function flog(msg, cls) {
@@ -955,7 +953,7 @@
     flashing = true; flashStop = false;
     $('fStart').disabled = true; $('fStop').hidden = false; $('fStop').textContent = '停止';
     $('fLog').innerHTML = ''; $('fBar').style.width = '0'; $('fProg').textContent = '0%';
-    log(`开始刷写：${(ctrls[curCtrl] || {}).name || '控制器'}（${[flashFiles.driver ? 'Driver：' + $('fDrvName').textContent : '', flashFiles.app ? 'App：' + $('fAppName').textContent : ''].filter(Boolean).join('；')}）`);
+    log(`开始刷写：${dispName(ctrls[curCtrl]) || '控制器'}（${[flashFiles.driver ? 'Driver：' + $('fDrvName').textContent : '', flashFiles.app ? 'App：' + $('fAppName').textContent : ''].filter(Boolean).join('；')}）`);
     if (needFp) flog('指纹编号来源：' + testerInfo.source);
     renderSteps(flow.steps, -1, '');
     // 确认框弹着时网页收不了数据，总线忙时设备缓冲会溢出丢帧；关掉后先等积压排空再发第一条，免得应答被丢

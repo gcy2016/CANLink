@@ -155,7 +155,7 @@
   <div class="card">
     <div class="row">
       <button class="b p" id="btnConn">连接设备</button>
-      <span class="hint" id="devInfo" style="flex:1;min-width:150px">用 USB 数据线连上 CANable 后点“连接设备”。</span>
+      <span class="hint" id="devInfo" style="flex:1;min-width:150px">未连接。</span>
     </div>
     <div class="row">
       <button class="b" id="btnChan" disabled>打开通道</button>
@@ -168,7 +168,6 @@
       <div><b>帧数</b><span id="rCnt">—</span></div>
       <div><b>标记</b><span id="rMarks">—</span></div>
     </div>
-    <div class="hint" style="margin-top:8px">录制在这台手机 / 电脑的浏览器里，关掉网页就没了，录完记得保存。</div>
     <div id="markList"></div>
   </div>
 
@@ -178,7 +177,7 @@
     <div class="row saverow">
       <select id="range" aria-label="保存范围"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select>
       <select id="recFmt" aria-label="保存格式"><option value="blf" selected>BLF</option><option value="asc">ASC</option></select>
-      <input type="text" id="recName" placeholder="文件名（可选）">
+      <input type="text" id="recName" placeholder="文件名">
     </div>
     <div class="row" id="rangeRow" hidden>
       <div class="fld" id="fMarks" hidden>从 / 到
@@ -193,7 +192,6 @@
       <button class="b" id="btnView" disabled>查看</button>
       <button class="b" id="btnMarks" disabled>导出标记清单</button>
     </div>
-    <div class="hint">下载的数据可以直接用 CANalyzer 打开，也可以点“查看”在本页的离线数据里看。分享会调起手机的分享菜单（企业微信等）；浏览器不支持文件分享时，会自动改成下载。“查看”直接在“查看 → 离线数据”里打开这段录制（可加载 DBC、诊断问卷分析）。</div>
   </div>
 
   <details class="card" id="busBox">
@@ -250,14 +248,13 @@
     <div class="row">
       <label class="tgl"><input type="checkbox" id="cFd" checked><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
       <label class="tgl"><input type="checkbox" id="cBrs" checked><span class="t-off">BRS 关</span><span class="t-on">BRS 开</span></label>
-      <label class="tgl"><input type="checkbox" id="cExt"><span class="t-off">标准帧（11 位 ID）</span><span class="t-on">扩展帧（29 位 ID）</span></label>
+      <label class="tgl"><input type="checkbox" id="cExt"><span class="t-off">标准帧</span><span class="t-on">扩展帧</span></label>
     </div>
-    <div class="hint">控制器 ID、功能寻址 ID 这些由你填；填好后自动存在本机。一份配置可以有多个控制器。保密内容不进仓库。</div>
   </div>
 
   <div class="card sticktop">
     <h2>诊断应答</h2>
-    <div id="diagOut" class="hint">点下面会话区的按钮，或在“手动发送”里发诊断指令，结果显示在这里。</div>
+    <div id="diagOut" class="hint"></div>
   </div>
 
   <div class="card">
@@ -283,7 +280,6 @@
       <button class="b r" id="btnClrDtc">清故障码</button>
       <div class="fld" style="flex:0 0 auto">子功能<input type="text" class="mono" id="dtcSub" value="02 FF" style="width:84px"></div>
     </div>
-    <div class="hint" id="dtcHint">子功能默认 <code>02 FF</code>（按状态掩码读）。读出的故障码会对照“查看 → 离线数据”里加载的诊断问卷显示含义。</div>
     <div id="dtcBox" style="margin-top:8px"></div>
   </div>
 
@@ -312,7 +308,7 @@
   </div>
 
   <div class="card">
-    <h2>常用指令 <span class="hint" style="font-weight:400">（名称 + UDS 数据，自动保存在本机；通过 ISO-TP 发给当前控制器并解析应答）</span></h2>
+    <h2>常用指令</h2>
     <div id="sendRows"></div>
     <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 加一条</button></div>
   </div>
@@ -329,7 +325,6 @@
       <label class="tgl"><input type="checkbox" id="sExt"><span class="t-off">标准帧</span><span class="t-on">扩展帧</span></label>
       <label class="tgl"><input type="checkbox" id="sFd"><span class="t-off">CAN</span><span class="t-on">CANFD</span></label>
       <label class="tgl"><input type="checkbox" id="sBrs" checked><span class="t-off">BRS 关</span><span class="t-on">BRS 开</span></label>
-      <span class="hint">BRS 只对 CANFD 有效</span>
     </div>
     <div class="row" style="margin-top:6px">
       <input type="text" id="rawData" class="mono" placeholder="原始数据，如 02 10 03" style="flex:1;min-width:160px">
@@ -346,7 +341,6 @@
 <section id="flash">
   <div class="card">
     <h2>刷写</h2>
-    <p class="hint">通用 UDS 刷写。<b>控制器</b>（请求 / 响应 / 功能寻址 ID、CAN FD、填充字节）在“诊断”页选。安全算法随开屏密码解锁内置好；指纹诊断仪编号自动获取，取不到才用内置值兜底，不用填。刷写流程写成下面的步骤表，换控制器 / 供应商改一份就能刷；支持 S19 / HEX。</p>
     <div class="hint" id="fCtrl"></div>
   </div>
 
@@ -355,18 +349,17 @@
     <div class="frow">
       <label class="fbtn" for="fDrv">选择文件</label>
       <input type="file" id="fDrv" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
-      <span><b>Driver</b> <span class="hint" id="fDrvName">（引导驱动，可不选）</span></span>
+      <span><b>Driver</b> <span class="hint" id="fDrvName"></span></span>
     </div>
     <div class="frow">
       <label class="fbtn" for="fApp">选择文件</label>
       <input type="file" id="fApp" accept=".s19,.s28,.s37,.srec,.mot,.hex,.ihex" hidden>
-      <span><b>App</b> <span class="hint" id="fAppName">（应用程序）</span></span>
+      <span><b>App</b> <span class="hint" id="fAppName"></span></span>
     </div>
-    <div class="hint" id="fInfo" style="margin-top:8px">只收 S19 / HEX（.s19 / .s28 / .s37 / .srec / .mot / .hex / .ihex）。别的格式会明确拒绝，不会当成刷写数据。选文件后这里显示识别出的格式和各段地址 / 大小。</div>
+    <div class="hint" id="fInfo" style="margin-top:8px"></div>
   </div>
 
   <div class="card">
-    <div class="hint" style="margin-bottom:10px">开始前确认：<b>蓄电池电压正常 / 接好充电宝</b>，手机设成不自动锁屏，中途别拔线、别切后台、别关通道。刷写时整车其他控制器会被静默，失败会尝试自动恢复；若提示停在 Boot，重新刷一次。</div>
     <div class="row">
       <button class="b p" id="fStart">开始刷写</button>
       <button class="b r" id="fStop" hidden>停止</button>
@@ -379,7 +372,6 @@
 
   <details class="card">
     <summary>刷写流程（高级：步骤、指令、等待时间）</summary>
-    <p class="hint" style="margin-top:8px">默认是标准 UDS 刷写顺序，换控制器 / 供应商改这里。顶层 <code>alfid</code> 地址/长度格式、<code>timeout</code> 每条等待毫秒、<code>recovery</code> 中途失败恢复整车的功能寻址指令；<code>steps</code> 每步有 <code>op</code>（req 物理请求 / func 功能寻址不等应答 / security 安全访问 / fingerprint 写指纹 / tp_on / tp_off 保持在线 / flash 刷文件 / delay 等待）、<code>name</code>、<code>data</code>、<code>wait</code>。flash 步的 <code>file</code> 是 driver/app，<code>erase</code> 先擦除、<code>activate</code> 后激活。</p>
     <textarea id="fFlow" style="width:100%;min-height:240px"></textarea>
     <div class="row" style="margin-top:8px">
       <button class="b" id="fFlowReset">恢复默认流程</button>
@@ -411,29 +403,26 @@
         </select></div>
       <div class="fld">采样点 %<input type="number" id="dataSp" value="70" min="50" max="95" step="0.5" style="width:84px"></div>
       <div class="fld">FD 类型
-        <select id="niso"><option value="0">ISO（一般选这个）</option><option value="1">非 ISO（Bosch）</option></select></div>
+        <select id="niso"><option value="0">ISO</option><option value="1">非 ISO（Bosch）</option></select></div>
     </div>
     <div class="row">
       <div class="fld">模式
         <div class="seg" id="mode"><button data-v="1" class="on">只听</button><button data-v="0">正常收发</button></div></div>
-      <div class="hint" style="align-self:flex-end;max-width:520px">只听：不发任何报文、不回 ACK，不影响总线，录报文用这个。诊断、发报文要用“正常收发”。通道开着时改设置会自动重开通道。</div>
     </div>
-    <div class="row hint" id="timingInfo"></div>
   </div>
 
   <div class="card">
     <h2>固件</h2>
     <div class="row" id="fwNow">当前：未连接</div>
-    <div class="hint">配套的是 vdlink 固件（在 CANable 2.0 原版 slcan 固件上改的，开源）。原版固件也能用，但时间戳不准、采样点不能调、只听模式不生效。</div>
     <details style="margin-top:8px">
       <summary>刷入 vdlink 固件</summary>
+      <div style="margin-top:6px">请在安卓系统执行以下步骤。</div>
       <ol>
-        <li>拔下 CANable，把 <b>BOOT</b> 两个针脚用跳线帽短接。</li>
-        <li>重新插上，这时它是“烧录模式”，不是 CAN 设备。</li>
-        <li>点下面的按钮，在弹窗里选 <b>STM32 BOOTLOADER</b>（或 DFU in FS Mode）。</li>
-        <li>等进度走完显示“完成”，拔下来、<b>取下跳线帽</b>，再插上就是新固件。</li>
+        <li>打开CANable外壳，把 <b>BOOT</b> 两个针脚用导线短接（注意不要短接到其他位置）。</li>
+        <li>保持短接状态下重新插上，指示灯亮后可拿掉短接导线。</li>
+        <li>点刷入vdlink1.0，在弹窗里选 <b>STM32 BOOTLOADER</b>（或 DFU in FS Mode）。</li>
+        <li>等进度走完显示“完成”，即代表固件程序更新成功。拔下来再插上就是新固件。</li>
       </ol>
-      <div class="hint">电脑（Windows）上浏览器一般看不到烧录模式的设备（缺驱动），用安卓手机刷最省事；也可以用 ST 官方的 STM32CubeProgrammer 刷 <a href="fw/vdlink-1.0.bin">vdlink-1.0.bin</a>（地址 0x08000000）。</div>
       <div class="row" style="margin-top:10px"><button class="b p" id="btnFlash">刷入 vdlink 1.0</button></div>
       <div class="bar"><i id="fwBar"></i></div>
       <div class="hint" id="fwMsg"></div>
@@ -444,7 +433,6 @@
     <h2>其他</h2>
     <div class="row">
       <button class="b" id="btnDemo">演示模式</button>
-      <span class="hint">不接硬件，用编出来的报文看看界面。</span>
     </div>
     <div class="row">
       <button class="b" id="btnExport">导出设置和常用指令</button>
@@ -453,9 +441,7 @@
     </div>
     <div class="row">
       <button class="b" id="btnLog">导出日志</button>
-      <span class="hint">遇到问题时，把运行日志导出来，用来分析原因。</span>
     </div>
-    <div class="hint">设置和常用指令存在浏览器里，清理浏览器数据会丢，建议导出一份备份。</div>
     <div class="hint" id="offlineInfo" style="margin-top:6px"></div>
   </div>
 </section>
