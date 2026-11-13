@@ -493,7 +493,7 @@
   // 诊断页四个列表（常用指令 / 读 DID / 写 DID / 例程）跟控制器绑定：按控制器名各存一套
   const listMaps = { cmds: store.get('cmdsMap', null) || {}, read: store.get('readMap', null) || {}, write: store.get('writeMap', null) || {}, rtn: store.get('rtnMap', null) || {} };
   const defaultCmds = () => [{ name: '进扩展会话', data: '10 03' }, { name: '读故障码', data: '19 02 FF' }, { name: '保持在线', data: '3E 80' }];
-  let cmds = [], readDids = [''], writeDids = [{ did: '', data: '' }], rtnRows = [{ type: '01', id: '', param: '' }];
+  let cmds = [], readDids = [{ name: '', did: '' }], writeDids = [{ name: '', did: '', data: '' }], rtnRows = [{ type: '01', id: '', param: '' }];
   const ctrlListKey = () => { const c = ctrls[curCtrl]; return c ? String(c.name || '') : ''; };
   // 旧版全局存的那份（升级前）先归到当前控制器名下
   (function migrateLists() {
@@ -505,8 +505,10 @@
   function bindLists() {
     const k = ctrlListKey(); if (!k) return;
     if (!listMaps.cmds[k]) listMaps.cmds[k] = defaultCmds();
-    if (!listMaps.read[k] || !listMaps.read[k].length) listMaps.read[k] = [''];
-    if (!listMaps.write[k] || !listMaps.write[k].length) listMaps.write[k] = [{ did: '', data: '' }];
+    if (!listMaps.read[k] || !listMaps.read[k].length) listMaps.read[k] = [{ name: '', did: '' }];
+    listMaps.read[k] = listMaps.read[k].map(x => typeof x === 'string' ? { name: '', did: x } : { name: x.name || '', did: x.did || '' });
+    if (!listMaps.write[k] || !listMaps.write[k].length) listMaps.write[k] = [{ name: '', did: '', data: '' }];
+    listMaps.write[k] = listMaps.write[k].map(x => ({ name: (x && x.name) || '', did: (x && x.did) || '', data: (x && x.data) || '' }));
     if (!listMaps.rtn[k] || !listMaps.rtn[k].length) listMaps.rtn[k] = [{ type: '01', id: '', param: '' }];
     cmds = listMaps.cmds[k]; readDids = listMaps.read[k]; writeDids = listMaps.write[k]; rtnRows = listMaps.rtn[k];
   }
@@ -740,24 +742,26 @@
 
   // 读取数据（22）：多行列表，跟控制器绑定；左滑删除（点删除再确认），底部「添加」加行
   function renderReadDids() {
-    $('didReadRows').innerHTML = readDids.map((d, i) => `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="didrow swp-in" data-i="${i}">
+    $('didReadRows').innerHTML = readDids.map((r, i) => `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="didrow swp-in" data-i="${i}">
       <button class="b p" data-a="read">读取</button>
-      <input type="text" class="mono" data-k="did" value="${esc(d)}" placeholder="DID" style="flex:1 1 auto;min-width:0">
+      <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称" style="width:84px;flex:0 0 auto">
+      <input type="text" class="mono" data-k="did" value="${esc(r.did || '')}" placeholder="DID" style="flex:1 1 auto;min-width:0">
     </div></div>`).join('');
   }
   swipeList($('didReadRows'), i => { if (!confirm('删除这一行？')) return; readDids.splice(i, 1); saveReadDids(); renderReadDids(); });
-  $('didReadRows').addEventListener('change', e => { const row = e.target.closest('.didrow'); if (row) { readDids[+row.dataset.i] = e.target.value; saveReadDids(); } });
+  $('didReadRows').addEventListener('change', e => { const row = e.target.closest('.didrow'); if (row && e.target.dataset.k) { readDids[+row.dataset.i][e.target.dataset.k] = e.target.value; saveReadDids(); } });
   $('didReadRows').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const i = +b.closest('.didrow').dataset.i;
-    if (b.dataset.a === 'read') { try { const did = parseHex(readDids[i]); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (err) { diagLog(err.message); } }
+    if (b.dataset.a === 'read') { try { const did = parseHex(readDids[i].did); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (err) { diagLog(err.message); } }
   });
-  $('btnAddReadDid').onclick = () => { readDids.push(''); saveReadDids(); renderReadDids(); const ins = document.querySelectorAll('#didReadRows input'); if (ins.length) ins[ins.length - 1].focus(); };
+  $('btnAddReadDid').onclick = () => { readDids.push({ name: '', did: '' }); saveReadDids(); renderReadDids(); const ins = document.querySelectorAll('#didReadRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
   renderReadDids();
   // 写入数据（2E）：同样多行列表；DID 框宽、写入值框窄；写之前保留确认框
   function renderWriteDids() {
     $('didWriteRows').innerHTML = writeDids.map((r, i) => `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="didrow swp-in" data-i="${i}">
       <button class="b r" data-a="write">写入</button>
+      <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称" style="width:84px;flex:0 0 auto">
       <input type="text" class="mono" data-k="did" value="${esc(r.did || '')}" placeholder="DID" style="flex:1 1 auto;min-width:0">
       <input type="text" class="mono" data-k="data" value="${esc(r.data || '')}" placeholder="写入值" style="width:76px;flex:0 0 auto">
     </div></div>`).join('');
@@ -776,7 +780,7 @@
       } catch (err) { diagLog(err.message); }
     }
   });
-  $('btnAddWriteDid').onclick = () => { writeDids.push({ did: '', data: '' }); saveWriteDids(); renderWriteDids(); const ins = document.querySelectorAll('#didWriteRows input[data-k=did]'); if (ins.length) ins[ins.length - 1].focus(); };
+  $('btnAddWriteDid').onclick = () => { writeDids.push({ name: '', did: '', data: '' }); saveWriteDids(); renderWriteDids(); const ins = document.querySelectorAll('#didWriteRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
   renderWriteDids();
   // 例程控制（31）：多行列表，跟控制器绑定；左滑删除，行首「执行」
   function renderRtnRows() {
@@ -1109,7 +1113,6 @@
     const why = diagReady();
     const raw = !S.dev ? '设备没连接：先在“录制”页点“连接设备”。' : (S.open ? S.openSilent : S.silent) ? '现在是只听模式：到“设置”里改成“正常收发”。' : '';
     $('sendHint').innerHTML = raw ? '<span class="warn">' + raw + '</span>' : (S.open ? '可以发送。' : '可以发送（通道没开时发送会自动打开）。');
-    for (const b of document.querySelectorAll('#sendRows button.tx')) b.disabled = !!why;
   }
 
   // 最近收发：当前控制器的请求 ID 和响应 ID（含功能寻址）
