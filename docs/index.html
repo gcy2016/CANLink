@@ -90,10 +90,15 @@
   .ch { background: var(--hl); border-radius: 2px; }
   .tbl { max-height: 65vh; overflow: auto; }
   .r { text-align: right; }
-  .sendrow { display: grid; grid-template-columns: auto minmax(120px, 180px) 1fr auto; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
+  .sendrow { display: grid; grid-template-columns: auto minmax(120px, 180px) 1fr; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding: 8px 0; }
   .sendrow:first-child { border-top: 0; }
   .didrow { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; border-top: 1px dashed var(--line); padding: 6px 0; }
   .didrow:first-child { border-top: 0; padding-top: 0; }
+  .swp { position: relative; overflow: hidden; }
+  .swp-in { position: relative; background: var(--card); touch-action: pan-y; transition: transform .18s ease; }
+  .swp-del { position: absolute; top: 0; right: 0; bottom: 0; width: 72px; border: 0; background: #d3382c; color: #fff; font-size: 15px; }
+  .swp:first-child .didrow, .swp:first-child .sendrow { border-top: 0; }
+  .rtnrow { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; padding: 6px 0; }
   .delx { flex: 0 0 auto; width: 30px; padding-left: 0; padding-right: 0; color: var(--muted); }
   .sendrow .btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 4px; }
@@ -121,7 +126,7 @@
     main { padding: 10px 10px 40px; }
     .hide-s { display: none; }
     table { font-size: 12px; }
-    .sendrow { grid-template-columns: auto minmax(64px, 100px) 1fr auto; gap: 6px; }
+    .sendrow { grid-template-columns: auto minmax(64px, 100px) 1fr; gap: 6px; }
     nav button { font-size: 14px; min-width: 56px; }
   }
   .tgl.off { opacity: .45; }
@@ -299,19 +304,14 @@
 
   <div class="card">
     <h2>例程控制（31）</h2>
-    <div class="row" style="flex-wrap:nowrap;align-items:flex-end">
-      <button class="b p" id="btnRtn">执行</button>
-      <div class="fld" style="flex:0 0 auto">类型
-        <select id="rtnType"><option value="01">启动</option><option value="02">停止</option><option value="03">读结果</option></select></div>
-      <div class="fld" style="flex:0 0 auto">例程 ID<input type="text" class="mono" id="rtnId" placeholder="如 0203" style="width:84px"></div>
-      <div class="fld" style="flex:1 1 auto;min-width:0">参数<input type="text" class="mono" id="rtnParam" placeholder="可不填" style="width:100%"></div>
-    </div>
+    <div id="rtnRows"></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddRtn">＋ 添加</button></div>
   </div>
 
   <div class="card">
     <h2>常用指令</h2>
     <div id="sendRows"></div>
-    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 加一条</button></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="btnAddSend">＋ 添加</button></div>
   </div>
 
   <details class="card" id="rawBox">

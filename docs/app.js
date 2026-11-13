@@ -490,6 +490,66 @@
   if (!ctrls || !ctrls.length) ctrls = [{ name: '控制器 1', req: '7E0', resp: '7E8', func: '7DF', pad: '00', fd: true, brs: true, ext: false }];
   let curCtrl = Math.min(store.get('ctrlCur', 0), ctrls.length - 1);
   const saveCtrls = () => { store.set('ctrls', ctrls); store.set('ctrlCur', curCtrl); };
+  // 诊断页四个列表（常用指令 / 读 DID / 写 DID / 例程）跟控制器绑定：按控制器名各存一套
+  const listMaps = { cmds: store.get('cmdsMap', null) || {}, read: store.get('readMap', null) || {}, write: store.get('writeMap', null) || {}, rtn: store.get('rtnMap', null) || {} };
+  const defaultCmds = () => [{ name: '进扩展会话', data: '10 03' }, { name: '读故障码', data: '19 02 FF' }, { name: '保持在线', data: '3E 80' }];
+  let cmds = [], readDids = [''], writeDids = [{ did: '', data: '' }], rtnRows = [{ type: '01', id: '', param: '' }];
+  const ctrlListKey = () => { const c = ctrls[curCtrl]; return c ? String(c.name || '') : ''; };
+  // 旧版全局存的那份（升级前）先归到当前控制器名下
+  (function migrateLists() {
+    const k = ctrlListKey(); if (!k) return;
+    const oc = store.get('cmds', null); if (Array.isArray(oc) && oc.length && !listMaps.cmds[k]) listMaps.cmds[k] = oc;
+    const orr = store.get('readDids', null); if (Array.isArray(orr) && orr.length && !listMaps.read[k]) listMaps.read[k] = orr;
+    const ow = store.get('writeDids', null); if (Array.isArray(ow) && ow.length && !listMaps.write[k]) listMaps.write[k] = ow;
+  })();
+  function bindLists() {
+    const k = ctrlListKey(); if (!k) return;
+    if (!listMaps.cmds[k]) listMaps.cmds[k] = defaultCmds();
+    if (!listMaps.read[k] || !listMaps.read[k].length) listMaps.read[k] = [''];
+    if (!listMaps.write[k] || !listMaps.write[k].length) listMaps.write[k] = [{ did: '', data: '' }];
+    if (!listMaps.rtn[k] || !listMaps.rtn[k].length) listMaps.rtn[k] = [{ type: '01', id: '', param: '' }];
+    cmds = listMaps.cmds[k]; readDids = listMaps.read[k]; writeDids = listMaps.write[k]; rtnRows = listMaps.rtn[k];
+  }
+  const saveCmds = () => store.set('cmdsMap', listMaps.cmds);
+  const saveReadDids = () => store.set('readMap', listMaps.read);
+  const saveWriteDids = () => store.set('writeMap', listMaps.write);
+  const saveRtnRows = () => store.set('rtnMap', listMaps.rtn);
+  bindLists();
+  function renderAllLists() { renderReadDids(); renderWriteDids(); renderRtnRows(); renderSend(); }
+  // 左滑删除：行向左滑露出「删除」，点删除由调用方弹确认后再删
+  function swipeList(box, onDel) {
+    let openIn = null, drag = null;
+    box.addEventListener('pointerdown', e => {
+      if (e.target.closest('.swp-del')) return;
+      const inner = e.target.closest('.swp-in'); if (!inner) return;
+      if (openIn && openIn !== inner) { openIn.style.transform = ''; openIn = null; }
+      drag = { inner, x: e.clientX, y: e.clientY, dx: 0, active: false };
+    });
+    box.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.active && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) { drag.active = true; drag.inner.style.transition = 'none'; }
+      if (drag.active) { drag.dx = Math.max(-76, Math.min(0, dx)); drag.inner.style.transform = 'translateX(' + drag.dx + 'px)'; }
+    });
+    const finish = commit => {
+      if (!drag) return; const d = drag; drag = null; if (!d.active) return;
+      d.inner.style.transition = '';
+      if (commit && d.dx < -38) { d.inner.style.transform = 'translateX(-72px)'; openIn = d.inner; }
+      else { d.inner.style.transform = ''; if (openIn === d.inner) openIn = null; }
+      box._swallow = true; setTimeout(() => { box._swallow = false; }, 80);
+    };
+    box.addEventListener('pointerup', e => {
+      if (drag && !drag.active && openIn === drag.inner && !e.target.closest('input, select, button, textarea, a')) { drag.inner.style.transform = ''; openIn = null; }
+      finish(true);
+    });
+    box.addEventListener('pointercancel', () => finish(false));
+    box.addEventListener('click', e => {
+      if (box._swallow) { e.preventDefault(); e.stopPropagation(); return; }
+      const del = e.target.closest('.swp-del'); if (!del) return;
+      e.preventDefault(); e.stopPropagation();
+      const w = del.closest('.swp'); if (w) onDel(+w.dataset.i);
+    }, true);
+  }
   function curCfg() {
     const c = ctrls[curCtrl] || {};
     const pad = String(c.pad || '').trim();
@@ -522,9 +582,9 @@
     else if (parts.length === 1) { c.req = parts[0]; }
     saveCtrls(); fillCtrlFields(); renderResp(true);
   });
-  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); flashCtrlHint(); });
-  $('ctrlAdd').onclick = () => { const nm = prompt('输入控制器名称', '控制器 ' + (ctrls.length + 1)); if (nm === null) return; ctrls.push({ name: nm.trim() || ('控制器 ' + (ctrls.length + 1)), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); };
-  $('ctrlDel').onclick = () => { const c = ctrls[curCtrl]; if (c && c.builtin) { alert('内置控制器不能删除（内置的安全算法等配置挂在它上面，删了就没了）。'); return; } if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${c.name}”？`)) return; ctrls.splice(curCtrl, 1); curCtrl = 0; saveCtrls(); renderCtrlSel(); };
+  $('ctrlSel').addEventListener('change', () => { curCtrl = +$('ctrlSel').value; saveCtrls(); fillCtrlFields(); renderResp(true); flashCtrlHint(); bindLists(); renderAllLists(); });
+  $('ctrlAdd').onclick = () => { const nm = prompt('输入控制器名称', '控制器 ' + (ctrls.length + 1)); if (nm === null) return; ctrls.push({ name: nm.trim() || ('控制器 ' + (ctrls.length + 1)), req: '', resp: '', func: '', pad: '00', fd: ctrls[curCtrl] ? ctrls[curCtrl].fd : true, brs: true, ext: false }); curCtrl = ctrls.length - 1; saveCtrls(); renderCtrlSel(); bindLists(); renderAllLists(); };
+  $('ctrlDel').onclick = () => { const c = ctrls[curCtrl]; if (c && c.builtin) { alert('内置控制器不能删除（内置的安全算法等配置挂在它上面，删了就没了）。'); return; } if (ctrls.length <= 1) { alert('至少保留一个控制器'); return; } if (!confirm(`删除“${c.name}”？`)) return; ctrls.splice(curCtrl, 1); for (const m of Object.values(listMaps)) delete m[c.name]; saveCmds(); saveReadDids(); saveWriteDids(); saveRtnRows(); curCtrl = 0; saveCtrls(); renderCtrlSel(); bindLists(); renderAllLists(); };
 
   // ISO-TP 实时收发引擎：发帧走原始帧通道，收到的每一帧喂给它
   const diagLog = m => { $('diagOut').innerHTML = `<span class="hint">${esc(m)}</span>`; };
@@ -678,45 +738,36 @@
     await udsReq([0x14, 0xFF, 0xFF, 0xFF]); $('dtcBox').innerHTML = '';
   };
 
-  // 读 / 写 DID（两行各一个 DID，读、写可以填不同的 DID）
-  // 读取数据（22）：可多行，每行一个 DID，行尾小 ✕ 删除（只剩一行时不显示），底部「＋ 添加」加行；内容存本机
-  let readDids = store.get('readDids', ['']);
-  if (!Array.isArray(readDids) || !readDids.length) readDids = [''];
-  const saveReadDids = () => store.set('readDids', readDids);
+  // 读取数据（22）：多行列表，跟控制器绑定；左滑删除（点删除再确认），底部「添加」加行
   function renderReadDids() {
-    $('didReadRows').innerHTML = readDids.map((d, i) => `<div class="didrow" data-i="${i}">
-      <button class="b p" data-a="read">读</button>
-      <input type="text" class="mono" data-k="did" value="${esc(d)}" placeholder="DID，如 FD54" style="flex:1 1 auto;min-width:0">
-      ${readDids.length > 1 ? '<button class="b delx" data-a="del" title="删除这一行">✕</button>' : ''}
-    </div>`).join('');
+    $('didReadRows').innerHTML = readDids.map((d, i) => `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="didrow swp-in" data-i="${i}">
+      <button class="b p" data-a="read">读取</button>
+      <input type="text" class="mono" data-k="did" value="${esc(d)}" placeholder="DID" style="flex:1 1 auto;min-width:0">
+    </div></div>`).join('');
   }
+  swipeList($('didReadRows'), i => { if (!confirm('删除这一行？')) return; readDids.splice(i, 1); saveReadDids(); renderReadDids(); });
   $('didReadRows').addEventListener('change', e => { const row = e.target.closest('.didrow'); if (row) { readDids[+row.dataset.i] = e.target.value; saveReadDids(); } });
   $('didReadRows').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const i = +b.closest('.didrow').dataset.i;
-    if (b.dataset.a === 'del') { readDids.splice(i, 1); saveReadDids(); renderReadDids(); }
-    else if (b.dataset.a === 'read') { try { const did = parseHex(readDids[i]); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (err) { diagLog(err.message); } }
+    if (b.dataset.a === 'read') { try { const did = parseHex(readDids[i]); if (did.length < 1) throw new Error('填 DID'); udsReq([0x22, ...did]); } catch (err) { diagLog(err.message); } }
   });
   $('btnAddReadDid').onclick = () => { readDids.push(''); saveReadDids(); renderReadDids(); const ins = document.querySelectorAll('#didReadRows input'); if (ins.length) ins[ins.length - 1].focus(); };
   renderReadDids();
-  // 写入数据（2E）：同样多行，写之前保留确认框
-  let writeDids = store.get('writeDids', [{ did: '', data: '' }]);
-  if (!Array.isArray(writeDids) || !writeDids.length) writeDids = [{ did: '', data: '' }];
-  const saveWriteDids = () => store.set('writeDids', writeDids);
+  // 写入数据（2E）：同样多行列表；DID 框宽、写入值框窄；写之前保留确认框
   function renderWriteDids() {
-    $('didWriteRows').innerHTML = writeDids.map((r, i) => `<div class="didrow" data-i="${i}">
-      <button class="b r" data-a="write">写</button>
-      <input type="text" class="mono" data-k="did" value="${esc(r.did || '')}" placeholder="DID" style="width:84px;flex:0 0 auto">
-      <input type="text" class="mono" data-k="data" value="${esc(r.data || '')}" placeholder="写入数据，如 01" style="flex:1 1 auto;min-width:0">
-      ${writeDids.length > 1 ? '<button class="b delx" data-a="del" title="删除这一行">✕</button>' : ''}
-    </div>`).join('');
+    $('didWriteRows').innerHTML = writeDids.map((r, i) => `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="didrow swp-in" data-i="${i}">
+      <button class="b r" data-a="write">写入</button>
+      <input type="text" class="mono" data-k="did" value="${esc(r.did || '')}" placeholder="DID" style="flex:1 1 auto;min-width:0">
+      <input type="text" class="mono" data-k="data" value="${esc(r.data || '')}" placeholder="写入值" style="width:76px;flex:0 0 auto">
+    </div></div>`).join('');
   }
+  swipeList($('didWriteRows'), i => { if (!confirm('删除这一行？')) return; writeDids.splice(i, 1); saveWriteDids(); renderWriteDids(); });
   $('didWriteRows').addEventListener('change', e => { const row = e.target.closest('.didrow'); if (row && e.target.dataset.k) { writeDids[+row.dataset.i][e.target.dataset.k] = e.target.value; saveWriteDids(); } });
   $('didWriteRows').addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
     const i = +b.closest('.didrow').dataset.i, r = writeDids[i];
-    if (b.dataset.a === 'del') { writeDids.splice(i, 1); saveWriteDids(); renderWriteDids(); }
-    else if (b.dataset.a === 'write') {
+    if (b.dataset.a === 'write') {
       try {
         const did = parseHex(r.did), data = parseHex(r.data);
         if (did.length < 1) throw new Error('填 DID');
@@ -727,32 +778,37 @@
   });
   $('btnAddWriteDid').onclick = () => { writeDids.push({ did: '', data: '' }); saveWriteDids(); renderWriteDids(); const ins = document.querySelectorAll('#didWriteRows input[data-k=did]'); if (ins.length) ins[ins.length - 1].focus(); };
   renderWriteDids();
-  // 例程控制
-  $('btnRtn').onclick = () => {
-    try { const id = parseHex($('rtnId').value); if (id.length < 2) throw new Error('例程 ID 要 2 字节，如 0203'); const param = $('rtnParam').value.trim() ? parseHex($('rtnParam').value) : []; udsReq([0x31, parseInt($('rtnType').value, 16), ...id, ...param]); }
-    catch (e) { diagLog(e.message); }
-  };
+  // 例程控制（31）：多行列表，跟控制器绑定；左滑删除，行首「执行」
+  function renderRtnRows() {
+    $('rtnRows').innerHTML = rtnRows.map((r, i) => `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="rtnrow swp-in" data-i="${i}">
+      <button class="b p" data-a="exec">执行</button>
+      <select data-k="type" style="flex:0 0 auto"><option value="01"${r.type === '01' ? ' selected' : ''}>启动</option><option value="02"${r.type === '02' ? ' selected' : ''}>停止</option><option value="03"${r.type === '03' ? ' selected' : ''}>读结果</option></select>
+      <input type="text" class="mono" data-k="id" value="${esc(r.id || '')}" placeholder="例程 ID" style="width:84px;flex:0 0 auto">
+      <input type="text" class="mono" data-k="param" value="${esc(r.param || '')}" placeholder="参数" style="flex:1 1 auto;min-width:0">
+    </div></div>`).join('');
+  }
+  $('rtnRows').addEventListener('change', e => { const row = e.target.closest('.rtnrow'); if (row && e.target.dataset.k) { rtnRows[+row.dataset.i][e.target.dataset.k] = e.target.value; saveRtnRows(); } });
+  $('rtnRows').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b || b.dataset.a !== 'exec') return;
+    const r = rtnRows[+b.closest('.rtnrow').dataset.i];
+    try { const id = parseHex(r.id); if (id.length < 2) throw new Error('例程 ID 要 2 字节，如 0203'); const param = r.param.trim() ? parseHex(r.param) : []; await udsReq([0x31, parseInt(r.type, 16), ...id, ...param]); }
+    catch (err) { diagLog(err.message); }
+  });
+  swipeList($('rtnRows'), i => { if (!confirm('删除这一行？')) return; rtnRows.splice(i, 1); saveRtnRows(); renderRtnRows(); });
+  $('btnAddRtn').onclick = () => { rtnRows.push({ type: '01', id: '', param: '' }); saveRtnRows(); renderRtnRows(); const ins = document.querySelectorAll('#rtnRows input[data-k=id]'); if (ins.length) ins[ins.length - 1].focus(); };
+  renderRtnRows();
 
   // ---- 常用指令（UDS 数据，经 ISO-TP 发给当前控制器） ----
-  let cmds = store.get('cmds', null);
-  if (!cmds) {
-    const old = store.get('send', null);   // 旧版每条单独存 ID 的格式
-    const strip = d => { const a = parseHex(d); return (a.length && a[0] <= 7 && a[0] === a.length - 1) ? hexs(a.slice(1)) : d; }; // 去掉旧的单帧长度前缀
-    cmds = old ? old.map(r => ({ name: '', data: strip(r.data) })) : [
-      { name: '进扩展会话', data: '10 03' }, { name: '读故障码', data: '19 02 FF' }, { name: '保持在线', data: '3E 80' }];
-  }
-  const saveCmds = () => store.set('cmds', cmds);
   function renderSend() {
     let h = '';
     cmds.forEach((r, i) => {
-      h += `<div class="sendrow" data-i="${i}">
+      h += `<div class="swp" data-i="${i}"><button class="swp-del" type="button">删除</button><div class="sendrow swp-in" data-i="${i}">
         <div class="btns"><button class="b p tx" data-a="once">发送</button></div>
         <input type="text" data-k="name" value="${esc(r.name || '')}" placeholder="名称（可不填）">
         <input type="text" class="mono" data-k="data" value="${esc(r.data)}" placeholder="UDS 数据，如 10 03">
-        <div class="btns"><button class="b r" data-a="del">删除</button></div>
-      </div>`;
+      </div></div>`;
     });
-    $('sendRows').innerHTML = h || '<div class="hint">还没有指令，点“加一条”。</div>';
+    $('sendRows').innerHTML = h || '<div class="hint">还没有指令，点下面的“添加”。</div>';
     updateSendHint();
   }
   $('sendRows').addEventListener('change', e => { const row = e.target.closest('.sendrow'); if (!row) return; cmds[+row.dataset.i][e.target.dataset.k] = e.target.value; saveCmds(); });
@@ -765,8 +821,8 @@
     const b = e.target.closest('button'); if (!b) return;
     const i = +b.closest('.sendrow').dataset.i, r = cmds[i];
     if (b.dataset.a === 'once') { try { await udsReq(parseHex(r.data)); } catch (err) { diagLog('发送失败：' + err.message); } }
-    else if (b.dataset.a === 'del') { if (!confirm(`删除“${r.name || r.data}”？`)) return; cmds.splice(i, 1); saveCmds(); renderSend(); }
   });
+  swipeList($('sendRows'), i => { const r = cmds[i]; if (!confirm(`删除“${(r && (r.name || r.data)) || '这一条'}”？`)) return; cmds.splice(i, 1); saveCmds(); renderSend(); });
   $('btnAddSend').onclick = () => { cmds.push({ name: '', data: '' }); saveCmds(); renderSend(); const ins = document.querySelectorAll('#sendRows input[data-k=name]'); if (ins.length) ins[ins.length - 1].focus(); };
   renderSend();
 
