@@ -143,16 +143,20 @@
     // 多帧刷写（34/36）可能有上百帧，按 ECU 的流控节流，别一次全灌。
     _pumpCF(bs, stmin) {
       const t = this.tx; if (!t) return;
-      const ms = stmin <= 0x7F ? stmin : (stmin >= 0xF1 && stmin <= 0xF9 ? 1 : 1);
+      // 帧间隔带地板：ECU 说 STmin=0 也别同步连发——实车实测贴着总线极限一口气灌一百多帧，
+      // USB 转串口的发送流会被冲乱（帧内容变乱码、发送中途卡死）。每轮最多连发 BURST 帧就让出一次。
+      const ms = Math.max(stmin <= 0x7F ? stmin : 1, 1);
+      const BURST = 8;
+      t.blockN = 0;                            // 本块（这次流控放行内）已发帧数
       const step = () => {
         if (this.tx !== t) return;            // 已被取消或换了事务
-        let n = 0;
+        let burst = 0;
         while (t.idx < t.frames.length) {
           try { this.send(this._frame(t.cfg, t.frames[t.idx])); } catch (e) { this.tx = null; return; }
-          t.idx++; n++;
+          t.idx++; t.blockN++; burst++;
           if (t.idx >= t.frames.length) { this.tx = null; return; } // 发完，等响应
-          if (bs && n >= bs) return;          // 这一块发够了，等 ECU 下一个流控
-          if (ms > 0) { setTimeout(step, ms); return; }
+          if (bs && t.blockN >= bs) return;   // 这一块发够了，等 ECU 下一个流控
+          if (burst >= BURST) { setTimeout(step, ms); return; }
         }
         this.tx = null;
       };
