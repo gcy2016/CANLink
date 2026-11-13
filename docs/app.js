@@ -193,7 +193,7 @@
 
   function showNoApi() {
     $('noApi').hidden = false;
-    $('noApi').innerHTML = '<span class="bad">本网页程序仅支持在Chrome (Android/Windows系统)或Edge(Windows系统)浏览器中使用，不支持iOS系统。</span>';
+    $('noApi').innerHTML = '<span class="bad">本网页程序仅支持在 Chrome 或 Edge 浏览器（Android、Windows、macOS 系统）中使用，不支持 iOS/iPadOS 及 HarmonyOS 系统。</span>';
   }
 
   function refreshNoApi() { if (!Transport.pick()) showNoApi(); else $('noApi').hidden = true; }
