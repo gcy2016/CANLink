@@ -571,6 +571,12 @@
     const r = await S.tp.request(cfg, Uint8Array.from(payload), { timeout: opt.timeout || 2500 });
     showResp(payload, r, opt);
     logUds(payload, r);
+    // 进非默认会话（扩展 / 编程）成功就自动开保持在线：会话约 5 秒没请求就自己掉，
+    // 手动一步步点很容易在间隙里超时（问题 1 里 27 就是这么被 7F 拒的）；回默认会话则自动关。
+    if (payload[0] === 0x10 && r.data && r.data[0] === 0x50) {
+      if (payload[1] === 0x01) tpStop();
+      else tpStart(true);
+    }
     return r;
   }
   function showResp(reqBytes, r, opt = {}) {
@@ -604,14 +610,25 @@
     const b = e.target.closest('button[data-uds]'); if (!b) return;
     udsReq(parseHex(b.dataset.uds));
   });
-  // 保持在线（循环 3E 80）
+  // 保持在线（循环 3E 80）：功能本来就有，这里只是把启停抽出来，
+  // 让“手动点按钮”和“进非默认会话后自动开”共用同一套启停，机制不变。
   let tpTimer = null;
-  $('btnTp').onclick = () => {
-    if (tpTimer) { clearInterval(tpTimer); tpTimer = null; $('btnTp').textContent = '保持在线：关'; $('btnTp').classList.remove('p'); log('保持在线：关'); return; }
-    if (diagReady()) { udsReq([0x3E, 0x80]); return; }
+  function tpStart(auto) {
+    if (tpTimer) return;
     udsReq([0x3E, 0x80]);
     tpTimer = setInterval(() => { const c = curCfg(); if (!S.open || S.openSilent) return; S.tp.request(c, Uint8Array.of(0x3E, 0x80), { timeout: 1000 }); }, 2000);
-    $('btnTp').textContent = '保持在线：开'; $('btnTp').classList.add('p'); log('保持在线：开（每 2 秒）');
+    $('btnTp').textContent = '保持在线：开'; $('btnTp').classList.add('p');
+    log(auto ? '保持在线：开（进会话后自动，每 2 秒）' : '保持在线：开（每 2 秒）');
+  }
+  function tpStop() {
+    if (!tpTimer) return;
+    clearInterval(tpTimer); tpTimer = null;
+    $('btnTp').textContent = '保持在线：关'; $('btnTp').classList.remove('p'); log('保持在线：关');
+  }
+  $('btnTp').onclick = () => {
+    if (tpTimer) { tpStop(); return; }
+    if (diagReady()) { udsReq([0x3E, 0x80]); return; }
+    tpStart(false);
   };
 
   // 安全访问（算法随开屏密码内置载入，不在页面显示；等级固定 1）
@@ -620,6 +637,9 @@
   refreshSecSt();
   $('btnSec').onclick = async () => {
     const lvl = 1, reqSub = 1, keySub = 2;
+    // 先紧跟着进扩展会话、再连着发 27（问题 1）：分开手点隔好几秒，会话早掉回默认，27 必被 7F 拒
+    const ses = await udsReq([0x10, 0x03]);
+    if (!ses.data || ses.data[0] !== 0x50) { $('diagOut').innerHTML += '<div class="bad">进扩展会话没成功，先不发安全访问。</div>'; return; }
     const seedR = await udsReq([0x27, reqSub]);
     if (!seedR.data || seedR.data[0] !== 0x67) return;
     const seed = seedR.data.slice(2);
