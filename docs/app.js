@@ -1021,6 +1021,7 @@
   function startRec() {
     S.rec = new Recorder();
     updateMarks();   // 新录制从零开始：清掉上一段的标记列表与范围选项，别等停录才刷新
+    $('recName').value = '';   // 文件名也一并重置，上一段填的名字别带进新录制
     S.recording = true;
     S.recT0 = S.lastT;
     S.saved = false;
@@ -1063,7 +1064,7 @@
     const has = S.rec.count > 0 && !S.recording;  // 录制中下载 / 分享 / 查看都置灰
     $('btnSave').disabled = !has; $('btnView').disabled = !has; $('btnShare').disabled = !has;
     $('btnMarks').disabled = !(has && S.rec.marks.length);
-    $('rMarks').textContent = S.rec.marks.length ? S.rec.marks.map(m => m.t.toFixed(1) + 's').join('，') : '无';
+    $('rMarks').textContent = S.rec.marks.length ? S.rec.marks.length + ' 处' : '无';   // 只报有几处；每个标记的时间在下面备注列表里有
   }
   function updateMarks() {
     const opts = ['<option value="start">开头</option>'];

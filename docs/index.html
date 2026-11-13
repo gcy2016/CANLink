@@ -43,9 +43,9 @@
   .modal[hidden] { display: none; }
   .modal-box { width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; margin: 0; }
   .markstext { white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: 12px; background: rgba(20, 40, 80, .05); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 44vh; overflow: auto; }
-  .mkrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-  .mkrow .mkt { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-  .mkrow input { flex: 1; min-width: 100px; }
+  .mkrow { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+  .mkrow .mkt { flex: 0 0 136px; font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .mkrow input { flex: 1 1 auto; min-width: 100px; max-width: 230px; }
   .saverow { flex-wrap: nowrap; gap: 8px; }
   .saverow > select, .saverow > input { min-width: 0; }
   .saverow #recName { flex: 1 1 auto; width: 0; max-width: 260px; }
@@ -178,7 +178,7 @@
     <div class="row saverow">
       <select id="range" aria-label="保存范围"><option value="all">全部</option><option value="marks">两个标记之间</option><option value="last">最后一段</option><option value="custom">自定义时间</option></select>
       <select id="recFmt" aria-label="保存格式"><option value="blf" selected>BLF</option><option value="asc">ASC</option></select>
-      <input type="text" id="recName" placeholder="文件名（可不填）">
+      <input type="text" id="recName" placeholder="文件名（可选）">
     </div>
     <div class="row" id="rangeRow" hidden>
       <div class="fld" id="fMarks" hidden>从 / 到
