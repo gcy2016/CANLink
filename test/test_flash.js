@@ -125,5 +125,40 @@ const seg = (addr, len, f) => ({ addr, data: Uint8Array.from({ length: len }, (_
     ok(cfSeen === 4, '流控 BS=2：30 字节分 4 个连续帧，按块全部发出');
   }
 
+
+  // ---- 走网关：功能寻址后马上发物理请求会被丢（问题 2）；步间留 100 ms 后要能跑通 ----
+  {
+    const { tp, ecu, cfg } = wireFlash();
+    let lastFunc = -1e9;
+    const feed0 = ecu.feed;
+    ecu.feed = m => {
+      const id = m.id & 0x1FFFFFFF;
+      if (id === cfg.func) lastFunc = Date.now();
+      else if (id === cfg.req && (m.data[0] >> 4) === 0 && Date.now() - lastFunc < 50) return;  // 网关忙，丢掉
+      feed0(m);
+    };
+    tp.send = f => ecu.feed(f);
+    const flow = { timeout: 300, steps: [
+      { op: 'req', name: '扩展', data: '10 03' },
+      { op: 'func', name: '功能扩展', data: '10 83' },
+      { op: 'security', name: '安全', level: 1 },
+    ] };
+    const r = await Flash.runFlash({ tp, cfg, flow, files: {}, keyPlugin: `return [1,2,3,4];`, Diag, hooks: { log: () => { } } });
+    ok(r.ok === true, '功能寻址后隔 100 ms 再发物理请求（网关不丢）');
+  }
+
+  // ---- 第一条请求的应答丢了：重发一次 ----
+  {
+    const { tp, ecu, cfg } = wireFlash();
+    let drop = 1;
+    const feed0 = ecu.feed;
+    ecu.feed = m => { if ((m.id & 0x1FFFFFFF) === cfg.req && drop) { drop--; return; } feed0(m); };
+    tp.send = f => ecu.feed(f);
+    const logs = [];
+    const flow = { timeout: 300, steps: [{ op: 'req', name: '扩展', data: '10 03' }, { op: 'req', name: '编程', data: '10 02' }] };
+    const r = await Flash.runFlash({ tp, cfg, flow, files: {}, Diag, hooks: { log: m => logs.push(m) } });
+    ok(r.ok === true && logs.some(m => /重发/.test(m)), '第一条请求超时自动重发一次后继续');
+  }
+
   console.log(`\n全部通过（${pass} 项）`);
 })();

@@ -947,9 +947,12 @@
     flashing = true; flashStop = false;
     $('fStart').disabled = true; $('fStop').hidden = false; $('fStop').textContent = '停止';
     $('fLog').innerHTML = ''; $('fBar').style.width = '0'; $('fProg').textContent = '0%';
-    log(`开始刷写：${curCfg().name}（${[flashFiles.driver ? 'Driver：' + $('fDrvName').textContent : '', flashFiles.app ? 'App：' + $('fAppName').textContent : ''].filter(Boolean).join('；')}）`);
+    log(`开始刷写：${(ctrls[curCtrl] || {}).name || '控制器'}（${[flashFiles.driver ? 'Driver：' + $('fDrvName').textContent : '', flashFiles.app ? 'App：' + $('fAppName').textContent : ''].filter(Boolean).join('；')}）`);
     if (needFp) flog('指纹编号来源：' + testerInfo.source);
     renderSteps(flow.steps, -1, '');
+    // 确认框弹着时网页收不了数据，总线忙时设备缓冲会溢出丢帧；关掉后先等积压排空再发第一条，免得应答被丢
+    flog('准备中…');
+    await new Promise(r => setTimeout(r, 800));
     try {
       const r = await Flash.runFlash({
         tp: S.tp, cfg: curCfg(), flow, files: flashFiles, keyPlugin: secCode, tester, Diag,
